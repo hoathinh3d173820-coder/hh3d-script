@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/yourname
-// @version      3.6
+// @version      3.7
 // @description  PLTLHVBC
 // @match        *://*/*
 // @grant        GM_addStyle
