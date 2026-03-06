@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      4.4
+// @version      4.5
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -6008,37 +6008,52 @@ if (selectedIds.length >= 2) {
         }
     }
 
-    function showToast(message, showButton = false) {
-        const toast = document.createElement("div");
-        toast.style.position = "fixed";
-        toast.style.bottom = "20px";
-        toast.style.right = "20px";
-        toast.style.background = "#222";
-        toast.style.color = "#fff";
-        toast.style.padding = "12px 16px";
-        toast.style.borderRadius = "8px";
-        toast.style.zIndex = "999999";
-        toast.style.fontSize = "14px";
+ function showToast(message, showButton = false) {
+    const toast = document.createElement("div");
 
-        toast.innerHTML = message;
+    toast.style.position = "fixed";
+    toast.style.bottom = "20px";
+    toast.style.right = "20px";
+    toast.style.background = "#1e1e1e";
+    toast.style.color = "#fff";
+    toast.style.padding = "12px 16px";
+    toast.style.borderRadius = "8px";
+    toast.style.zIndex = "999999";
+    toast.style.fontSize = "14px";
+    toast.style.boxShadow = "0 0 10px rgba(0,0,0,0.5)";
+    toast.style.display = "flex";
+    toast.style.alignItems = "center";
+    toast.style.gap = "10px";
 
-        if (showButton) {
-            const btn = document.createElement("button");
-            btn.textContent = "Cập nhật";
-            btn.style.marginLeft = "10px";
-            btn.style.cursor = "pointer";
-            btn.onclick = () => {
-                window.open("https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js");
-            };
-            toast.appendChild(btn);
-        }
+    const text = document.createElement("span");
+    text.textContent = message;
 
-        document.body.appendChild(toast);
+    toast.appendChild(text);
 
-        setTimeout(() => {
-            toast.remove();
-        }, 10000);
+    if (showButton) {
+        const btn = document.createElement("button");
+
+        btn.textContent = "Cập nhật";
+        btn.style.background = "#4CAF50";
+        btn.style.color = "#fff";
+        btn.style.border = "none";
+        btn.style.padding = "6px 10px";
+        btn.style.borderRadius = "6px";
+        btn.style.cursor = "pointer";
+
+        btn.onclick = () => {
+            window.open("https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js");
+        };
+
+        toast.appendChild(btn);
     }
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 10000);
+}
 
     checkUpdate();
 })();
