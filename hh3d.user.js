@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      4.2
+// @version      3.8
 // @description  PLTLHVBC
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -1363,7 +1363,7 @@ async function fetchActivityProgress() {
     if (wrap) {
       wrap.innerHTML = `
         <div style="font-size:12px;margin-bottom:4px;color:#ccc;">
-          Hoạt độneg <span style="float:right;">${percent}</span>
+          Hoạt động <span style="float:right;">${percent}</span>
         </div>
         <div style="width:100%;height:6px;background:#2a2a2a;
                     border-radius:999px;overflow:hidden;">
@@ -1730,6 +1730,7 @@ async function fetchWeddingRooms() {
     action: "show_all_wedding",
     security_token: securityToken
   });
+
   return r.ok ? r.data?.data || [] : null;
 }
 // ================== HELPER ==================
@@ -1769,6 +1770,8 @@ function showApiMessage(prefix, id, apiRes) {
     );
   }
 }
+
+
 // ================== ACTION ==================
 async function sendBlessing(id) {
   const msg = "🌌 Định mệnh an bài, chúc hai vị đạo hữu bách niên hảo hợp!";
@@ -1825,6 +1828,7 @@ function parseWeddingRooms(rooms) {
 
   return { blessList, giftList };
 }
+
 // ================== MAIN AUTO ==================
 async function runWeddingAuto() {
   try {
@@ -1882,7 +1886,6 @@ if (btnWedding) {
   btnWedding.addEventListener("click", runWeddingAuto);
 }
 function autoChucPhucScheduler() {
-      
   const now = nowMinutes();
   AUTO_CHUC_PHUC_WINDOWS.forEach(w => {
     const runKey = `HH3D_${w.key}`;
@@ -1941,7 +1944,6 @@ let currentTarget = null;
 async function fetchLvPageInfo() {
   const url = "/luan-vo-duong?t=" + Date.now();
   const resp = await fetch(url, {
-        
     credentials: "include",
     cache: "no-store"
   });
@@ -1998,7 +2000,6 @@ let LV_NEED_JOIN = false;
     showToast("✅ Đã gia nhập Luận Võ");
     return true;
   }
-          
   showToast("⚠️ Không join được Luận Võ");
   return false;
 }
@@ -5804,18 +5805,33 @@ function showEnemyPopup(list) {
       background:#1c1c1c;border-radius:8px;
       cursor:pointer;transition:0.2s;
     `;
-    row.innerHTML = `<div style="color:#888;font-size:12px;width:25px">
-        ${index + 1}</div>
-      <img src="${user.avatar}"style="width:38px;height:38px;border-radius:50%"><div style="flex:1">
-        <div style="font-weight:600;color:#fff">
-          ${user.name}
-          <span style="color:#00eaff;font-size:11px;
-            font-weight:700;margin-left:6px;background:rgba(0,194,255,0.15);padding:2px 6px;border-radius:6px;">
-            ID:${user.id} </span>
-        </div><div style="font-size:12px;color:#00c2ff">
-          ${user.tongName || "Tán Tu"} </div><div style="font-size:12px;color:#aaa">
-          ${user.time_spent || ""} </div> </div>
-    `;
+row.innerHTML = `
+  <div style="color:#888;font-size:12px;width:25px">
+    ${index + 1}
+  </div>
+
+  <div style="flex:1">
+    <div style="font-weight:600;color:#fff">
+      ${user.name}
+    </div>
+
+    <div style="font-size:12px;color:#00c2ff">
+      ${user.tongName || "Tán Tu"}
+    </div>
+
+    <div style="font-size:12px;color:#aaa">
+      ${user.time_spent || ""}
+    </div>
+  </div>
+`;
+
+// chặn link tông
+row.querySelectorAll("a").forEach(a => {
+  a.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+});
     row.onclick = () => {
       if (selected.has(user.id)) {
         selected.delete(user.id);
@@ -5848,44 +5864,16 @@ function showEnemyPopup(list) {
     const mineId = KM_STATE.currentMineId;
     const selectedIds = Array.from(selected);
 if (selectedIds.length >= 2) {
-  showToast(" Đang thực hiện...");
-  const res = await refreshMineUsers(mineId);
-  let refreshedList = [];
-  if (Array.isArray(res?.data)) {
-    refreshedList = res.data;
-  } else if (Array.isArray(res?.data?.users)) {
-    refreshedList = res.data.users;
-  } else if (Array.isArray(res?.users)) {
-    refreshedList = res.users;
-  }
-  const myId = getMyUserId();
-  let targetReset = null;
-  if (myId) {
-    targetReset = refreshedList.find(u =>
-      Number(u.id) === Number(myId)
-    );
-  }
-  if (!targetReset) {
-    targetReset = refreshedList.find(u =>
-      u.dong_mon == 1 ||
-      u.dong_mon === true ||
-      u.dong_mon === "1"
-    );
-  }
-  if (!targetReset) {
-    targetReset = refreshedList.find(u =>
-      u.lien_minh == 1 ||
-      u.lien_minh === true ||
-      u.lien_minh === "1"
-    );
-  }
-  if (targetReset) {
-    showToast("⚡OK ");
-    await attackUserInMine(targetReset.id, mineId);
-    await sleep(5500);
-  } else {
-    showToast("⚠️ Không tìm thấy bản thân / đồng minh");
-  }
+  showToast("⚔️ Đánh mục tiêu đầu tiên chờ xíu để chống band...");
+
+  // đánh thằng đầu tiên
+  const firstTarget = selectedIds.shift();
+  await attackUserInMine(firstTarget, mineId);
+
+  // chờ 5.5s
+  await sleep(5500);
+
+  showToast("⚡ Tiếp tục đánh các mục tiêu còn lại...");
 }
     for (const id of selectedIds) {
       let res = await attackUserInMine(id, mineId);
@@ -5988,6 +5976,21 @@ if (selectedIds.length >= 2) {
   }); observer.observe(document.body, {
     childList: true,subtree: true
   });
+(function enableAvatarProfileClick(){
+  document.addEventListener("click", function(e){
+    const avatarBox = e.target.closest(".avatar-km, img.avatar-50px");
+    if(!avatarBox) return;
+    const img = avatarBox.querySelector("img.avatar-50px") || avatarBox;
+    if(!img || !img.src) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const match = img.src.match(/ultimatemember\/(\d+)\//i);
+    if(!match) return;
+    const userId = match[1];
+    const url = buildUrl(`/profile/${userId}`);
+    window.location.href = url;
+  }, true);
+})();
 })();
 })();
 })();
