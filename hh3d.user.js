@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      3.8
+// @version      4.3
 // @description  PLTLHVBC
 // @match        *://*/*
 // @grant        GM_addStyle
