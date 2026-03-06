@@ -1,14 +1,14 @@
-
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      4.7
+// @version      4.8
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
 // @grant        GM_getValue
-
+// @grant        GM_xmlhttpRequest
+// @connect      raw.githubusercontent.com
 // @updateURL    https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // @downloadURL  https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // ==/UserScript==
@@ -311,7 +311,8 @@ function renderList() {
     document.getElementById("hh3d-pass").value = "";
     renderList();
   };
-    document.getElementById("hh3d-login").onclick = async () => {
+document.getElementById("hh3d-login").onclick = async () => {
+
   const saved = await GM_getValue(STORAGE_KEY, {
     accounts: [],
     activeId: null
@@ -321,18 +322,65 @@ function renderList() {
     showToast("Chưa chọn tài khoản!");
     return;
   }
-
+  // luôn bắt đầu bộ đếm 10s reload
+  showToast("Sẽ Hoàn thành sau 10s");
+  setTimeout(() => {
+    location.reload();
+  }, 10000);
   const logoutBtn = document.querySelector('a[href="/my-account/user-logout"]');
 
   if (logoutBtn) {
     showToast("Đang đăng xuất...");
-    logoutBtn.click();
+
+    await logoutViaIframe();
+
+    showToast("Đang đăng nhập tài khoản mới...");
+    setTimeout(() => autoLogin(), 800);
+
     return;
   }
 
   showToast("Đang đăng nhập...");
   autoLogin();
+
 };
+async function logoutViaIframe() {
+  return new Promise(resolve => {
+
+    const iframe = document.createElement("iframe");
+
+iframe.style.cssText = `
+  position:fixed;
+  bottom:0;
+  right:0;
+  width:1px;
+  height:1px;
+  border:none;
+  opacity:0;
+`;
+
+    iframe.src = "/my-account/user-logout";
+
+    document.body.appendChild(iframe);
+
+    iframe.onload = () => {
+      console.log("iframe loaded:", iframe.contentWindow.location.href);
+
+      const watcher = setInterval(() => {
+        try {
+          console.log("iframe url:", iframe.contentWindow.location.href);
+        } catch (e) {}
+      }, 500);
+
+      setTimeout(() => {
+        clearInterval(watcher);
+        console.log("iframe logout done");
+        resolve();
+      }, 2000);
+    };
+
+  });
+}
   document.getElementById("hh3d-close").onclick = () => popup.remove();
     renderList();
 }
@@ -6062,6 +6110,72 @@ window.addEventListener("load", () => {
     setTimeout(checkUpdate, 3000);
 
 });
+      (function(){
+const DATA_URL="https://raw.githubusercontent.com/hoathinh3d173820-coder/tuvi-data/main/data.json";
+let TUVI_DATA={};
+// ===== LOAD DATA =====
+function loadData(){
+ GM_xmlhttpRequest({
+  method:"GET",
+  url:DATA_URL,
+  onload:function(res){
+   try{
+    TUVI_DATA = JSON.parse(res.responseText);
+   }catch(e){
+    console.log("Lỗi đọc data.json");
+   }
+  }
+
+ });
+}
+// ===== LẤY UID =====
+function getUserId(img){
+ const m = img.src.match(/ultimatemember\/(\d+)\//);
+ return m ? m[1] : null;
+}
+// ===== CHÈN TU VI =====
+function inject(){
+
+ document.querySelectorAll(".user-row").forEach(row=>{
+
+  if(row.dataset.tuviInjected) return;
+
+  const img=row.querySelector(".avatar-50px");
+  if(!img) return;
+
+  const uid=getUserId(img);
+  if(!uid) return;
+
+  const tuvi=TUVI_DATA[uid];
+  if(!tuvi) return;
+
+  const name=row.querySelector(".user-name");
+  if(!name) return;
+
+  const div=document.createElement("div");
+
+  div.className="tuvi-show";
+  div.style.color="red";
+  div.style.fontWeight="bold";
+  div.style.fontSize="13px";
+
+  div.innerText="Tu Vi: "+Number(tuvi).toLocaleString();
+
+  name.after(div);
+
+  row.dataset.tuviInjected=true;
+
+ });
+
+}
+
+// ===== RUN =====
+
+loadData();
+
+setInterval(inject,1000);
+
+})();
 })();
 })();
 })();
