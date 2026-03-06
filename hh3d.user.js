@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      4.3
-// @description  PLTLHVBC
+// @version      4.2
+// @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @run-at       document-end
+
 // @updateURL    https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // @downloadURL  https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // ==/UserScript==
@@ -5990,6 +5990,58 @@ if (selectedIds.length >= 2) {
     const url = buildUrl(`/profile/${userId}`);
     window.location.href = url;
   }, true);
+    (function () {
+    const CURRENT_VERSION = GM_info.script.version;
+    const VERSION_URL = "https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/version.json";
+
+    async function checkUpdate() {
+        try {
+            const res = await fetch(VERSION_URL);
+            const data = await res.json();
+            const latest = data.version;
+
+            if (latest !== CURRENT_VERSION) {
+                showToast(`Script HH3D có phiên bản mới ${latest}`, true);
+            }
+        } catch (e) {
+            console.log("Không check được update");
+        }
+    }
+
+    function showToast(message, showButton = false) {
+        const toast = document.createElement("div");
+        toast.style.position = "fixed";
+        toast.style.bottom = "20px";
+        toast.style.right = "20px";
+        toast.style.background = "#222";
+        toast.style.color = "#fff";
+        toast.style.padding = "12px 16px";
+        toast.style.borderRadius = "8px";
+        toast.style.zIndex = "999999";
+        toast.style.fontSize = "14px";
+
+        toast.innerHTML = message;
+
+        if (showButton) {
+            const btn = document.createElement("button");
+            btn.textContent = "Cập nhật";
+            btn.style.marginLeft = "10px";
+            btn.style.cursor = "pointer";
+            btn.onclick = () => {
+                window.open("https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js");
+            };
+            toast.appendChild(btn);
+        }
+
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 10000);
+    }
+
+    checkUpdate();
+})();
 })();
 })();
 })();
