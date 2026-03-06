@@ -1,7 +1,8 @@
+
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      4.6
+// @version      4.7
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -5990,72 +5991,77 @@ if (selectedIds.length >= 2) {
     const url = buildUrl(`/profile/${userId}`);
     window.location.href = url;
   }, true);
-    (function () {
-    const CURRENT_VERSION = GM_info.script.version;
-    const VERSION_URL = "https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/version.json";
+  (function () {
 
-    async function checkUpdate() {
-        try {
-            const res = await fetch(VERSION_URL);
-            const data = await res.json();
-            const latest = data.version;
+const CURRENT_VERSION = GM_info.script.version;
 
-            if (latest !== CURRENT_VERSION) {
-                showToast(`Script HH3D có phiên bản mới ${latest}`, true);
-            }
-        } catch (e) {
-            console.log("Không check được update");
+const VERSION_URL =
+"https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/version.json?t=" + Date.now();
+
+const SCRIPT_URL =
+"https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js";
+
+async function checkUpdate() {
+
+    try {
+
+        const res = await fetch(VERSION_URL);
+        const data = await res.json();
+        const latest = data.version;
+
+        if (latest !== CURRENT_VERSION) {
+
+            showToast(`🚀 Script HH3D có bản mới ${latest}`, true);
+
         }
+
+    } catch (e) {
+
+        console.log("Không check được update");
     }
-
- function showToast(message, showButton = false) {
+}
+function showToast(message, showButton = false) {
     const toast = document.createElement("div");
-
     toast.style.position = "fixed";
-    toast.style.bottom = "20px";
-    toast.style.right = "20px";
-    toast.style.background = "#1e1e1e";
+    toast.style.bottom = "30px";
+    toast.style.right = "30px";
+    toast.style.background = "#1f2937";
     toast.style.color = "#fff";
-    toast.style.padding = "12px 16px";
-    toast.style.borderRadius = "8px";
+    toast.style.padding = "14px 18px";
+    toast.style.borderRadius = "10px";
+    toast.style.boxShadow = "0 6px 20px rgba(0,0,0,0.4)";
     toast.style.zIndex = "999999";
     toast.style.fontSize = "14px";
-    toast.style.boxShadow = "0 0 10px rgba(0,0,0,0.5)";
     toast.style.display = "flex";
     toast.style.alignItems = "center";
     toast.style.gap = "10px";
-
-    const text = document.createElement("span");
-    text.textContent = message;
-
-    toast.appendChild(text);
-
+    toast.innerHTML = message;
     if (showButton) {
         const btn = document.createElement("button");
-
-        btn.textContent = "Cập nhật";
-        btn.style.background = "#4CAF50";
-        btn.style.color = "#fff";
+        btn.innerText = "Cập nhật";
+        btn.style.background = "#4ade80";
         btn.style.border = "none";
-        btn.style.padding = "6px 10px";
+        btn.style.padding = "6px 12px";
         btn.style.borderRadius = "6px";
         btn.style.cursor = "pointer";
-
+        btn.style.fontWeight = "bold";
         btn.onclick = () => {
-            window.open("https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js");
+            window.open(SCRIPT_URL, "_blank");
+
         };
-
         toast.appendChild(btn);
+
     }
-
     document.body.appendChild(toast);
-
     setTimeout(() => {
         toast.remove();
-    }, 10000);
-}
 
-    checkUpdate();
+    }, 20000);
+}
+window.addEventListener("load", () => {
+    setTimeout(checkUpdate, 3000);
+
+});
 })();
 })();
 })();
