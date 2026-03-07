@@ -6094,7 +6094,7 @@ async function checkUpdate() {
 
         if (latest !== CURRENT_VERSION) {
 
-            showToast(`🚀 Script HH3D có bản mới ${latest}`, true);
+            showToast(`🚀 Script HH3D có phiên bản mới ${latest}`, true);
 
         }
 
