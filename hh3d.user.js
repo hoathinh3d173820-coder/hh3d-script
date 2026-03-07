@@ -6271,7 +6271,7 @@ div.style.fontWeight="bold";
 
 div.style.fontSize="13px";
 
-div.style.color = rate>50 ? "blue" : "red";
+div.style.color = rate>50 ? "green" : "red";
 
 div.innerText="✨ "+Number(tuvi).toLocaleString()+" ("+rate+"%)";
 
