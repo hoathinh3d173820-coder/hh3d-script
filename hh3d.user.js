@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      5.2
+// @version      5.3
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -1885,15 +1885,39 @@ async function sendBlessing(id, type) {
   showApiMessage("💌 Chúc phúc", id, data);
 }
 async function openLiXi(id) {
+
   const res = await callApi({
     action: "hh3d_receive_li_xi",
     wedding_room_id: id
   });
 
-  // 👉 VD: "Chúc mừng đạo hữu nhận được 64 Tinh Thạch!"
-  showApiMessage("🧧 Lì xì", id, res?.data);
-}
+  if (!res?.data) {
+    showToast(`🧧 #${id} ❌ Không có phản hồi`, "error");
+    return;
+  }
 
+  const data = res.data;
+
+  if (data.success) {
+
+    const reward = data.data;
+
+    if (reward?.amount) {
+      showToast(
+        `🧧 #${id} nhận ${reward.amount} ${reward.name} ${reward.icon || ""}`,
+        "success"
+      );
+    }
+    else {
+      showToast(`🧧 #${id}: ${data.message}`, "success");
+    }
+
+  }
+  else {
+    showToast(`🧧 #${id} ❌ ${data.message}`, "error");
+  }
+
+}
 // ================== PARSE PHÒNG CƯỚI (CHUẨN THEO BACKEND) ==================
 function parseWeddingRooms(rooms) {
 
@@ -1921,14 +1945,16 @@ function parseWeddingRooms(rooms) {
       blessList.push({ id, type });
     }
 
-    // ===== LÌ XÌ CHỈ CÓ Ở ĐẠO LỮ =====
-    if (type === "dao_lu" && hasLiXi) {
+    // ===== CÓ LÌ XÌ (DAO LỮ + HỒNG NHAN) =====
+    if (hasLiXi) {
       giftList.push({ id, type });
     }
+
   }
 
   return { blessList, giftList };
 }
+
 // ================== MAIN AUTO ==================
 async function runWeddingAuto() {
   try {
