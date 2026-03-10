@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      5.3
+// @version      5.4
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -3574,7 +3574,23 @@ const STORAGE_BONUS_MIN = "hh3d_khoang_bonus_min";
 const STORAGE_KEY = "hh3d_khoang_mines";
 const STORAGE_SELECTED = "hh3d_khoang_selected";
 const AK = {
-  running: false,selectedMineId: null,selectedMineName: null,selectedType: null,timer: null,checkMinutes: 5,enableTakeover: false,enableAttack : false};
+  running: false,
+  selectedMineId: null,
+  selectedMineName: null,
+  selectedType: null,
+  timer: null,
+  checkMinutes: 5,
+
+  enableTakeover: false,
+  enableAttack : false,
+
+  // ===== AUTO BUFF =====
+  enableBatQuai: false,
+  enableAnThan: false,
+
+  bqTimer: null,
+  atTimer: null
+};
 function isSessionExpired(res) {
   const msg = res?.message || res?.data?.message || "";
   return /phiên|hết hạn|token|invalid/i.test(msg);
@@ -3971,76 +3987,105 @@ async function buyLingQuangPhu() {
   }
   return res;
 }
-    async function buyBatQuai() {
-  const security = await getSecurity("buy_item_khoang");
-  await sleep(500);
+async function buyBatQuai(){
 
-  const fd = new FormData();
-  fd.append("action", "buy_item_khoang");
-  fd.append("item_id", "1"); // 🔮 Bát Quái
-  fd.append("security", security);
+if(!AK.enableBatQuai) return;
 
-  const res = await fetch(API_URL, {
-    method: "POST",
-    credentials: "include",
-    body: fd
-  }).then(r => r.json());
-  const msg =
-    res?.message ||
-    res?.data?.message ||
-    "Mua Bát Quái thất bại";
-  if (res?.success) {
-    akLog(`🔮 ${msg}`);
-  } else {
-    akLog(`❌ ${msg}`);
-  }
-  return res;
+const security = await getSecurity("buy_item_khoang");
+
+await sleep(500);
+
+const fd = new FormData();
+
+fd.append("action","buy_item_khoang");
+fd.append("item_id","1");
+fd.append("security",security);
+
+const res = await fetch(API_URL,{
+method:"POST",
+credentials:"include",
+body:fd
+}).then(r=>r.json());
+
+const msg =
+res?.message ||
+res?.data?.message ||
+"Không rõ";
+
+if(res?.success){
+
+akLog(`🔮 ${msg}`);
+
+AK.bqTimer = setTimeout(buyBatQuai,5000);
+
+}else{
+
+akLog(`❌ ${msg}`);
+
+const wait = parseWaitTime(msg);
+
+AK.bqTimer = setTimeout(buyBatQuai,wait*1000+2000);
+
 }
-async function buyAnThan() {
-  const security = await getSecurity("buy_item_khoang");
-  await sleep(500);
-  const fd = new FormData();
-  fd.append("action", "buy_item_khoang");
-  fd.append("item_id", "2"); // 🥷 Ẩn Thân
-  fd.append("security", security);
-  const res = await fetch(API_URL, {
-    method: "POST",
-    credentials: "include",
-    body: fd
-  }).then(r => r.json());
-  const msg =
-    res?.message ||
-    res?.data?.message ||
-    "Mua Ẩn Thân thất bại";
-  if (res?.success) {
-    akLog(`🥷 ${msg}`);
-  } else {
-    akLog(`❌ ${msg}`);
-  }
-  return res;
+
+return res;
+
 }
-async function takeoverMine(mineId) {
-  const security = await getSecurity("change_mine_owner");
-  await sleep(600);
-  const fd = new FormData();
-  fd.append("action", "change_mine_owner");
-  fd.append("mine_id", mineId);
-  fd.append("security", security);
-  const res = await fetch(API_URL, {
-    method: "POST",
-    credentials: "include",
-    body: fd
-  }).then(r => r.json());
-  const msg =
-    res?.message ||
-    res?.data?.message ||
-    "Đoạt mỏ thất bại";
-  if (res?.success) {
-    akLog(`🗡 ${msg}`);
-  } else {
-    akLog(`❌ ${msg}`);
-  }
-  return res;
+async function buyAnThan(){
+
+if(!AK.enableAnThan) return;
+
+const security = await getSecurity("buy_item_khoang");
+
+await sleep(500);
+
+const fd = new FormData();
+
+fd.append("action","buy_item_khoang");
+fd.append("item_id","2");
+fd.append("security",security);
+
+const res = await fetch(API_URL,{
+method:"POST",
+credentials:"include",
+body:fd
+}).then(r=>r.json());
+
+const msg =
+res?.message ||
+res?.data?.message ||
+"Không rõ";
+
+if(res?.success){
+
+akLog(`🥷 ${msg}`);
+
+AK.atTimer = setTimeout(buyAnThan,5000);
+
+}else{
+
+akLog(`❌ ${msg}`);
+
+const wait = parseWaitTime(msg);
+
+AK.atTimer = setTimeout(buyAnThan,wait*1000+2000);
+
+}
+
+return res;
+
+}
+    function parseWaitTime(msg){
+
+const m = msg.match(/(\d+)\s*phút\s*(\d+)\s*giây/i);
+
+if(!m) return 60;
+
+const min = parseInt(m[1]);
+const sec = parseInt(m[2]);
+
+return (min*60+sec);
+
 }
 async function attackUserInMine(targetUserId, mineId) {
 const { security, token } = await getSecurityBundle("attack_user_in_mine");
@@ -4196,7 +4241,7 @@ attackBtn.onclick = () => {
       ? "⚔ Bật auto đánh địch trong mỏ": "⛔ Tắt auto đánh"
   );
 };
-        
+
 // ================== STYLE ==================
 GM_addStyle(`
 #autoKhoangPopup{position:fixed;inset:0;z-index:99999;font-family:system-ui}
@@ -4238,17 +4283,62 @@ background:#3b2450;}.ak-tabs .ak-toggle.active{background:#7c3aed;border-color:#
 .ak-bad-chip button{background:transparent;border:none;color:#f87171;cursor:pointer;font-size:12px;padding:0;line-height:1;}
 .ak-bad-chip button:hover{ color:#ffaaaa;}
 #akBuyBatQuai, #akBuyAnThan{background:#1b2230;border:1px solid #2b3445; color:#caa7ff;border-radius:4px;cursor:pointer;padding:2px 6px;}
+#akBuyBatQuai.active,
+#akBuyAnThan.active{
+background:#7c3aed;
+color:#fff;
+border-color:#7c3aed;
+box-shadow:0 0 8px rgba(124,58,237,.6);
+}
+
 #akBuyBatQuai:hover, #akBuyAnThan:hover{background:#263149;}`);
 // ================== EVENTS ==================
 const badAddBtn = popup.querySelector("#akBadAdd");
 const badInput = popup.querySelector("#akBadInput");
 const buyBQBtn = popup.querySelector("#akBuyBatQuai");
 const buyAnThanBtn = popup.querySelector("#akBuyAnThan");
-buyBQBtn.onclick = async () => {
-  await buyBatQuai();
+buyBQBtn.onclick = ()=>{
+
+AK.enableBatQuai = !AK.enableBatQuai;
+
+buyBQBtn.classList.toggle("active",AK.enableBatQuai);
+
+if(AK.enableBatQuai){
+
+akLog("🔮 Bật auto Bát Quái");
+
+buyBatQuai();
+
+}else{
+
+akLog("⛔ Tắt auto Bát Quái");
+
+clearTimeout(AK.bqTimer);
+
+}
+
 };
-buyAnThanBtn.onclick = async () => {
-  await buyAnThan();
+
+buyAnThanBtn.onclick = ()=>{
+
+AK.enableAnThan = !AK.enableAnThan;
+
+buyAnThanBtn.classList.toggle("active",AK.enableAnThan);
+
+if(AK.enableAnThan){
+
+akLog("🥷 Bật auto Ẩn Thân");
+
+buyAnThan();
+
+}else{
+
+akLog("⛔ Tắt auto Ẩn Thân");
+
+clearTimeout(AK.atTimer);
+
+}
+
 };
 badAddBtn.onclick = () => {
   const val = badInput.value.trim();
@@ -4333,7 +4423,7 @@ if (saved?.id) {
   akLog("Đã load mỏ đã lưu");
 }
 }
-                                                       
+
 function renderBadEnemyList() {
   const box = document.getElementById("akBadList");
   if (!box) return;
@@ -4380,7 +4470,7 @@ function addBadEnemy(id) {
     akLog(`🚫 Đã thêm vào danh sách né: ${id}`);
   }
 }
-          
+
 function removeBadEnemy(id) {
   id = String(id);
   const list = getBadEnemies().filter(x => String(x) !== id);
@@ -4433,7 +4523,7 @@ const enemies = info.users.filter(
     u.lien_minh === false &&
     u.dong_mon === false
 );
-         
+
 if (abortCombat || !AK.enableAttack || !AK.running) {
   akLog("⛔ Đã tắt auto đánh → bỏ qua combat vòng này");
   gotoNextLoop();
@@ -4469,7 +4559,7 @@ while (AK.running) {
     stopAuto();
     return;
   }
-       
+
   // 🚫 HẾT LƯỢT ĐÁNH
   if (
     atk?.success === false &&
@@ -4586,7 +4676,7 @@ if (curInMine) {
 
   // ===== NẰM TRONG VÙNG 30-80% =====
   if (
-        
+
     AK.enableTakeover &&
     bonusNow >= TAKE_MIN &&
     bonusNow <= TAKE_MAX
@@ -4641,7 +4731,7 @@ else {
     enterMine,
     [AK.selectedMineId]
   );
-      
+
   // enterMine đã tự log → chỉ xử lý case đặc biệt
   if (!enter?.success) {
     const msg = enter?.message || enter?.data?.message || "";
@@ -4659,7 +4749,7 @@ else {
   };
   loop();
 }
-      
+
 function stopAuto() {
   AK.running = false;
   clearTimeout(AK.timer);
