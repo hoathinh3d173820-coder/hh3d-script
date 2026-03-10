@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      5.4
+// @version      5.5
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
