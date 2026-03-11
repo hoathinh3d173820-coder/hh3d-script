@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      5.6
+// @version      1.0
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -4704,73 +4704,103 @@ async function startAuto() {
 
       }
 
-      // ===== TAKEOVER 30-80 =====
+  // ===== TAKEOVER 30-80 =====
 
-      if (
-        AK.enableTakeover &&
-        bonus >= 30 &&
-        bonus <= 80
-      ) {
+if (
+  AK.enableTakeover &&
+  bonus >= 30 &&
+  bonus <= 80
+) {
 
-        akLog("🗡 Bonus 30-80 → đoạt mỏ");
+  akLog("🗡 Bonus 30-80 → đoạt mỏ");
 
-        await callWithRetry(
-          takeoverMine,
-          [AK.selectedMineId]
-        );
+  await callWithRetry(
+    takeoverMine,
+    [AK.selectedMineId]
+  );
 
-        await sleep(1200);
+  await sleep(1200);
 
-        await callWithRetry(buyLingQuangPhu);
+  // refresh mỏ
+  const re = await callWithRetry(
+    getUsersInMine,
+    [AK.selectedMineId]
+  );
 
-        await sleep(1200);
+  if (re?.success)
+    bonus = re.data?.bonus_percentage ?? 0;
 
-      }
+  akLog(`📊 Bonus sau đoạt: ${bonus}%`);
+
+  // chỉ dùng phù nếu vẫn thấp
+  if (AK.enableLinhQuang && bonus < bonusMin && bonus !== 20) {
+
+    akLog("🧿 Dùng Linh Quang Phù");
+
+    await callWithRetry(buyLingQuangPhu);
+
+    await sleep(1200);
+
+    const re2 = await callWithRetry(
+      getUsersInMine,
+      [AK.selectedMineId]
+    );
+
+    if (re2?.success)
+      bonus = re2.data?.bonus_percentage ?? 0;
+
+    akLog(`✨ Bonus sau phù: ${bonus}%`);
+
+  }
+
+}
 
       // ===== FARM 110 =====
 
-      if (AK.enableTake110 && bonus < 110) {
+if (AK.enableTake110 && bonus < 110 && bonus !== 20) {
 
-        akLog("🗡 Thử đoạt mỏ");
+  akLog("🗡 Thử đoạt mỏ");
 
-        await callWithRetry(
-          takeoverMine,
-          [AK.selectedMineId]
-        );
+  await callWithRetry(
+    takeoverMine,
+    [AK.selectedMineId]
+  );
 
-        await sleep(1200);
+  await sleep(1200);
 
-        const re2 = await callWithRetry(
-          getUsersInMine,
-          [AK.selectedMineId]
-        );
+  const re2 = await callWithRetry(
+    getUsersInMine,
+    [AK.selectedMineId]
+  );
 
-        if (re2?.success)
-          bonus = re2.data?.bonus_percentage ?? 0;
+  if (re2?.success)
+    bonus = re2.data?.bonus_percentage ?? 0;
 
-        akLog(`📊 Bonus sau đoạt: ${bonus}%`);
+  akLog(`📊 Bonus sau đoạt: ${bonus}%`);
 
-      }
 
-      if (bonus < 110 && bonus !== 20) {
+  // chỉ dùng phù nếu vẫn <110
+  if (bonus < 110 && bonus !== 20) {
 
-        akLog("🧿 Dùng Linh Quang Phù");
+    akLog("🧿 Dùng Linh Quang Phù");
 
-        await callWithRetry(buyLingQuangPhu);
+    await callWithRetry(buyLingQuangPhu);
 
-        await sleep(1200);
+    await sleep(1200);
 
-        const re3 = await callWithRetry(
-          getUsersInMine,
-          [AK.selectedMineId]
-        );
+    const re3 = await callWithRetry(
+      getUsersInMine,
+      [AK.selectedMineId]
+    );
 
-        if (re3?.success)
-          bonus = re3.data?.bonus_percentage ?? 0;
+    if (re3?.success)
+      bonus = re3.data?.bonus_percentage ?? 0;
 
-        akLog(`✨ Bonus sau phù: ${bonus}%`);
+    akLog(`✨ Bonus sau phù: ${bonus}%`);
 
-      }
+  }
+
+}
 
       // ===== CLAIM =====
 
