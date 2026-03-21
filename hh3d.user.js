@@ -75,7 +75,7 @@ function createUI() {
   panel.id = "akPanel";
  panel.innerHTML = `
   <div id="akHeader">
-    ⛏ AUTO KHOÁNG PRO
+    THEO DÕI KHOÁNG
     <span id="akClose">✖</span>
   </div>
     <div class="akRow">
@@ -140,8 +140,69 @@ toggleBtn.onclick = () => {
   document.getElementById("akLoadMine").onclick = loadMineList;
   document.getElementById("modeAttack").onclick = () => setMode("attack");
   document.getElementById("modeInsert").onclick = () => setMode("insert");
-  renderSelected();
-  renderGroups();
+ renderSelected();
+renderGroups();
+
+// ===== DRAG PANEL (RIGHT CLICK) =====
+(function enableDrag(){
+  const panel = document.getElementById("akPanel");
+
+  let isDragging = false;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  const savedPos = JSON.parse(localStorage.getItem("akPanel_pos") || "null");
+  if (savedPos) {
+    panel.style.top = savedPos.top + "px";
+    panel.style.left = savedPos.left + "px";
+    panel.style.right = "auto";
+  }
+
+  panel.addEventListener("contextmenu", (e) => {
+    if (isDragging) e.preventDefault();
+  });
+
+  panel.addEventListener("mousedown", function(e){
+    if (e.button !== 0) return;
+
+    if (
+      e.target.closest("button") ||
+      e.target.closest("input") ||
+      e.target.closest("#akLogBox")
+    ) return;
+
+    isDragging = true;
+
+    const rect = panel.getBoundingClientRect();
+
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+
+    panel.style.right = "auto";
+
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("mousemove", function(e){
+    if (!isDragging) return;
+
+    panel.style.left = (e.clientX - offsetX) + "px";
+    panel.style.top = (e.clientY - offsetY) + "px";
+  });
+
+  document.addEventListener("mouseup", function(){
+    if (!isDragging) return;
+
+    isDragging = false;
+    document.body.style.userSelect = "";
+
+    const rect = panel.getBoundingClientRect();
+    localStorage.setItem("akPanel_pos", JSON.stringify({
+      top: rect.top,
+      left: rect.left
+    }));
+  });
+})();
 }
  const style = document.createElement("style");
 style.innerHTML = `
@@ -329,7 +390,21 @@ style.innerHTML = `
   color: #000 !important;
   font-weight: bold;
 }
+/* cursor kéo */
+#akPanel {
+  cursor: grab;
+}
 
+#akPanel:active {
+  cursor: grabbing;
+}
+
+/* không áp dụng cho nút & input */
+#akPanel button,
+#akPanel input,
+#akPanel #akLogBox {
+  cursor: default !important;
+}
 `;
 document.head.appendChild(style);
 function setActive(btnId) {
@@ -1204,9 +1279,62 @@ input:checked+.slider:before{transform:translateX(26px)}
 const menu=document.createElement("div");
 menu.id="autoMenu";
 menu.style.cssText="position:fixed;top:60px;right:20px;z-index:99999;background:rgba(25,25,25,.95);padding:10px;border-radius:8px;width:220px;font-family:'Segoe UI',sans-serif;color:#eee;box-shadow:0 0 10px rgba(0,0,0,.5);backdrop-filter:blur(4px)";
-menu.innerHTML='<div style="text-align:center;margin-bottom:8px"><img src="'+buildUrl("/wp-content/uploads/2025/05/logo.png")+'" style="max-width:130px;border-radius:6px"></div><div id="autoProfileInfo" style="margin:8px 0;padding:6px;background:#333;border-radius:6px;font-size:13px;line-height:1.4em"><div style="color:#bbb;text-align:center">⏳ Đang tải...</div></div>'+
-[["Phúc Lợi","PhucLoi",4],["Thí Luyện","ThiLuyen",3],["Hoang Vực","HoangVuc",5],["Bí Cảnh","BiCanh",5]].map(([t,k,m])=>'<label class="menu-row"><span class="menu-title">'+t+' <span id="count'+k+'" class="menu-count">0/'+m+'</span></span><div class="switch"><input type="checkbox" id="toggle'+k+'"><span class="slider"></span></div></label>').join("")+
-'<button id="hapThuBtn" class="hapthu-btn hapthu-hint">✨ Hấp Thụ Linh Thạch</button><label class="menu-row"><span class="menu-title">Tiến Độ</span><div class="switch"><input type="checkbox" id="toggleTienDo"><span class="slider"></span></div></label><div style="margin-top:6px;font-size:12px"><div style="color:#bbb;margin-bottom:2px">🌐 URL web</div><div style="display:flex;align-items:center;gap:6px;width:100%"><input id="domainConfigInput" type="text" placeholder="vd: hoathinh3d.li" style="flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border-radius:4px;border:1px solid #555;background:#111;color:#fff;font-size:12px"><button id="autoLoginSettingBtn" style="flex:0 0 auto;width:32px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #555;background:#222;color:#fff;cursor:pointer;font-size:14px">⚙️</button></div></div>';
+menu.innerHTML =
+`<div style="text-align:center;margin-bottom:8px">
+  <img src="${buildUrl("/wp-content/uploads/2025/05/logo.png")}" style="max-width:130px;border-radius:6px">
+</div>
+
+<div id="autoProfileInfo" style="margin:8px 0;padding:6px;background:#333;border-radius:6px;font-size:13px;line-height:1.4em">
+  <div style="color:#bbb;text-align:center">⏳ Đang tải...</div>
+</div>
+
+${
+  [["Phúc Lợi","PhucLoi",4],
+   ["Thí Luyện","ThiLuyen",3],
+   ["Hoang Vực","HoangVuc",5],
+   ["Bí Cảnh","BiCanh",5]
+  ].map(([t,k,m]) => `
+  <label class="menu-row">
+    <span class="menu-title">${t}
+      <span id="count${k}" class="menu-count">0/${m}</span>
+    </span>
+    <div class="switch">
+      <input type="checkbox" id="toggle${k}">
+      <span class="slider"></span>
+    </div>
+  </label>
+  `).join("")
+}
+
+<button id="hapThuBtn" class="hapthu-btn hapthu-hint">
+  ✨ Hấp Thụ Linh Thạch
+</button>
+
+<label class="menu-row">
+  <span class="menu-title">Tiến Độ</span>
+  <div class="switch">
+    <input type="checkbox" id="toggleTienDo">
+    <span class="slider"></span>
+  </div>
+</label>
+
+<div style="margin-top:6px;font-size:12px">
+  <div style="color:#bbb;margin-bottom:2px">🌐 URL web</div>
+
+  <div style="display:flex;align-items:center;gap:6px;width:100%">
+    <input id="domainConfigInput" type="text"
+      placeholder="vd: hoathinh3d.li"
+      style="flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border-radius:4px;border:1px solid #555;background:#111;color:#fff;font-size:12px">
+
+    <!-- 💎 NÚT KHOÁNG -->
+    <button id="autoLoginSettingBtn"
+      style="flex:0 0 auto;width:32px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #555;background:#222;color:#fff;cursor:pointer">
+      <span class="material-icons">diamond</span>
+    </button>
+  </div>
+</div>
+`;
+
 document.body.appendChild(menu);
 document.getElementById("autoLoginSettingBtn")
   ?.addEventListener("click", openKhoangMenu);
@@ -6919,7 +7047,7 @@ function showEnemyPopup(list) {
       background:#1c1c1c;border-radius:8px;
       cursor:pointer;transition:0.2s;
     `;
-          
+           
 row.innerHTML = `
   <div style="color:#888;font-size:12px;width:25px">
     ${index + 1}
@@ -7015,11 +7143,12 @@ if (selectedIds.length >= 2) {
       }
       await new Promise(r => setTimeout(r, 200));
     }
-          
+           
     attackBtn.textContent = "Xong";
     attackBtn.disabled = false;
     setTimeout(() => overlay.remove(), 400);
   };
+  
   box.appendChild(attackBtn);
   overlay.appendChild(box);
   overlay.onclick = e => {
@@ -7188,7 +7317,7 @@ const DATA_URL="https://raw.githubusercontent.com/hoathinh3d173820-coder/tuvi-da
 
 let TUVI_DATA={};
 let MY_TUVI=0;
-
+ 
 
 // ===== LẤY TU VI BẢN THÂN =====
 function getMyTuvi(){
@@ -7257,7 +7386,7 @@ else if(ratio >= 3) per = 0.5;
 else if(ratio >= 2) per = 0.4;
 // % thay đổi
 const bonus = (diff / 1000) * per;
-
+ 
 // tỉ lệ thắng
 const rate = 50 + bonus;
 
@@ -7318,8 +7447,8 @@ div.innerText="✨ "+Number(tuvi).toLocaleString()+" ("+rate+"%)";
 name.after(div);
 row.dataset.tuviInjected=true;
 });
-
-}
+ 
+} 
 // ===== RUN =====
 getMyTuvi();
 loadData();
