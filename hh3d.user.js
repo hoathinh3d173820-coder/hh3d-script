@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.0
+// @version      1.1
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -12,6 +12,1023 @@
 // @updateURL    https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // @downloadURL  https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // ==/UserScript==
+// ===== INIT AUTO KHOANG (GLOBAL) =====
+window.initAutoKhoang = function () {
+  'use strict';
+
+   function sleep(ms) {
+  return new Promise(resolve => REAL_SET_TIMEOUT(resolve, ms));
+}
+    const REAL_SET_TIMEOUT = window.setTimeout.bind(window);
+    let TUVI_DATA = {};
+const TUVI_URL = "https://raw.githubusercontent.com/hoathinh3d173820-coder/tuvikktt/main/data.json";
+let MODE = null;
+function setMode(m) {
+  MODE = m;
+  localStorage.setItem("hh3d_mode", m);
+
+  const attackBtn = document.getElementById("modeAttack");
+  const insertBtn = document.getElementById("modeInsert");
+
+  attackBtn.classList.remove("active");
+  insertBtn.classList.remove("active");
+
+  if (m === "attack") attackBtn.classList.add("active");
+  if (m === "insert") insertBtn.classList.add("active");
+
+  log("🎯 Mode: " + (m === "attack" ? "Đánh" : "Chèn"));
+}
+  // ================= CẤU HÌNH =================
+  const STORAGE_LOG = "hh3d_log";
+  const STORAGE_MINES = "hh3d_selected_mines";
+const STORAGE_GROUPS = "hh3d_selected_groups";
+let SELECTED_GROUPS = JSON.parse(localStorage.getItem(STORAGE_GROUPS) || "[]");
+const STORAGE_CHECK_SEC = "hh3d_check_sec";
+const AK = {
+  running: false,
+  timer: null,
+  checkSeconds: 60 // mặc định 60s
+};
+
+const AK_SEC = {
+  token: null,
+  actions: {},
+  nonces: {},
+  lastScan: 0
+};
+
+  let SELECTED_MINES = JSON.parse(localStorage.getItem(STORAGE_MINES) || "[]");
+  let khoangFetchPromise = null;
+
+  const ACTION_PATTERNS = {
+    load_mines_by_type: /action:\s*['"]load_mines_by_type['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+      attack_user_in_mine: /action:\s*['"]attack_user_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+enter_mine: /action:\s*['"]enter_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+claim_reward_km: /action:\s*['"]claim_reward_km['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+      refresh_attack_count: /action:\s*['"]refresh_attack_count['"][\s\S]*?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+    get_users_in_mine:  /action:\s*['"]get_users_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  };
+  // ================= UI =================
+function createUI() {
+  if (document.getElementById("akPanel")) return;
+  const panel = document.createElement("div");
+  panel.id = "akPanel";
+ panel.innerHTML = `
+  <div id="akHeader">
+    ⛏ AUTO KHOÁNG PRO
+    <span id="akClose">✖</span>
+  </div>
+    <div class="akRow">
+      <button id="akStartBtn">START</button>
+      <button id="akStopBtn">STOP</button>
+    </div>
+    <div class="akRow">
+      <label>Check:</label>
+      <input id="akSec" type="number" min="1" value="60"/> giây
+      <button id="akSave">Lưu</button>
+    </div>
+    <div class="akRow">
+      <button id="akLoadMine">Chọn Mỏ</button>
+    </div>
+    <div class="akRow">
+      <label>Mode:</label>
+      <button id="modeAttack"> Đánh</button>
+      <button id="modeInsert"> Chèn</button>
+    </div>
+    <div class="akBox">
+      <div class="title">📦 Danh sách mỏ</div>
+      <div id="akMineList"></div>
+    </div>
+    <div class="akBox">
+      <div class="title">⭐ Mỏ đã chọn</div>
+      <div id="akSelected"></div>
+    </div>
+    <div class="akBox">
+      <div class="title">⚔️ Tông theo dõi</div>
+      <div id="akGroupList"></div>
+    </div>
+    <div id="akLogBox"></div>
+  `;
+  document.body.appendChild(panel);
+    // 🔥 nút mở lại
+const toggleBtn = document.createElement("div");
+toggleBtn.id = "akToggleBtn";
+toggleBtn.innerText = "⚙";
+document.body.appendChild(toggleBtn);
+
+// ẩn panel
+document.getElementById("akClose").onclick = () => {
+  panel.style.display = "none";
+  toggleBtn.style.display = "flex";
+};
+
+// hiện panel
+toggleBtn.onclick = () => {
+  panel.style.display = "block";
+  toggleBtn.style.display = "none";
+};
+  // 🔥 LOAD LẠI SỐ GIÂY
+  const savedSec = localStorage.getItem("hh3d_check_sec");
+  if (savedSec) {
+    AK.checkSeconds = Number(savedSec);
+    document.getElementById("akSec").value = savedSec;
+  }
+  // 🔥 EVENTS
+  document.getElementById("akStartBtn").onclick = startAuto;
+  document.getElementById("akStopBtn").onclick = stopAuto;
+  document.getElementById("akSave").onclick = saveSetting;
+  document.getElementById("akLoadMine").onclick = loadMineList;
+  document.getElementById("modeAttack").onclick = () => setMode("attack");
+  document.getElementById("modeInsert").onclick = () => setMode("insert");
+  renderSelected();
+  renderGroups();
+}
+ const style = document.createElement("style");
+style.innerHTML = `
+
+/* PANEL */
+#akPanel {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 380px;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  z-index: 999999;
+  padding: 12px;
+  border-radius: 10px;
+  font-family: monospace;
+}
+
+/* HEADER */
+#akPanel #akHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #00d4ff;
+}
+
+/* CLOSE */
+#akPanel #akClose {
+  cursor: pointer;
+  color: #f33;
+  font-weight: bold;
+}
+
+/* BOX */
+#akPanel .akBox {
+  border: 1px solid #333;
+  margin-top: 8px;
+  padding: 6px;
+  background: #111;
+  max-height: 140px;
+  overflow-y: auto;
+  border-radius: 6px;
+}
+
+/* SCROLL */
+#akPanel .akBox::-webkit-scrollbar {
+  width: 6px;
+}
+#akPanel .akBox::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+/* TITLE */
+#akPanel .title {
+  color: #00d4ff;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+/* ITEM */
+#akPanel .mineItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 6px;
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+#akPanel .mineItem span {
+  flex: 1;
+  color: #ddd;
+}
+
+/* BUTTON */
+#akPanel button {
+  background: #222 !important;
+  color: #ddd !important;
+  border: 1px solid #555 !important;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+#akPanel button:hover {
+  background: #00d4ff !important;
+  color: #000 !important;
+}
+
+/* ACTIVE
+#akPanel button.active {
+  background: #00d4ff !important;
+  color: #000 !important;
+  font-weight: bold;
+}
+
+/* ADD */
+#akPanel .btn-add {
+  background: #0a7d2c !important;
+  color: #fff !important;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-weight: bold;
+}
+
+#akPanel .btn-add:hover {
+  background: #0f0 !important;
+  color: #000 !important;
+}
+
+/* DELETE */
+#akPanel .btn-del {
+  background: #a11 !important;
+  color: #fff !important;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-weight: bold;
+}
+
+#akPanel .btn-del:hover {
+  background: #f33 !important;
+}
+
+/* INPUT
+#akPanel input {
+  width: 50px;
+  background: #111 !important;
+  color: #fff !important;
+  border: 1px solid #555 !important;
+}
+
+/* LOG */
+#akPanel #akLogBox {
+  height: 120px;
+  overflow-y: auto;
+  background: #111;
+  border: 1px solid #333;
+  margin-top: 6px;
+  padding: 4px;
+  font-size: 11px;
+}
+
+/* TOGGLE BUTTON
+#akToggleBtn {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  background: #00d4ff;
+  border-radius: 50%;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 999999;
+  color: #000;
+  font-weight: bold;
+}
+
+/* START / STOP */
+#akPanel #akStartBtn.active {
+  background: #00d4ff !important;
+  color: #000 !important;
+}
+
+#akPanel #akStopBtn.active {
+  background: #ff4444 !important;
+  color: #fff !important;
+}
+
+/* MODE */
+#akPanel #modeAttack.active,
+#akPanel #modeInsert.active {
+  background: #00d4ff !important;
+  color: #000 !important;
+  font-weight: bold;
+}
+
+`;
+document.head.appendChild(style);
+function setActive(btnId) {
+  document.getElementById("akStartBtn").classList.remove("active");
+  document.getElementById("akStopBtn").classList.remove("active");
+
+  if (btnId === "akStartBtn") {
+    document.getElementById("akStartBtn").classList.add("active");
+  }
+
+  if (btnId === "akStopBtn") {
+    document.getElementById("akStopBtn").classList.add("active");
+  }
+}
+
+function saveSetting() {
+  const val = document.getElementById("akSec").value;
+
+  if (!val || val < 1) {
+    log("❌ Số giây không hợp lệ");
+    return;
+  }
+
+  localStorage.setItem(STORAGE_CHECK_SEC, val);
+  AK.checkSeconds = Number(val);
+
+  log("💾 Đã lưu: " + val + " giây");
+}
+
+  // ================= LOG =================
+  function log(msg) {
+    const time = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    const box = document.getElementById("akLogBox");
+    if (box) {
+      const div = document.createElement("div");
+      div.textContent = time;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+  }
+  // ================= SECURITY =================
+  async function fetchKhoangMachAll(force = false) {
+    const now = Date.now();
+
+    if (!force && now - AK_SEC.lastScan < 30 * 60 * 1000) {
+      log("⏱ Cache security");
+      return;
+    }
+
+    if (khoangFetchPromise) return khoangFetchPromise;
+
+    khoangFetchPromise = (async () => {
+      log("🔄 quét security...");
+
+      const html = await fetch("/khoang-mach", {
+        credentials: "include",
+        cache: "no-store"
+      }).then(r => r.text());
+
+      for (const [action, regex] of Object.entries(ACTION_PATTERNS)) {
+        const m = html.match(regex);
+        if (m?.[1]) {
+          AK_SEC.actions[action] = m[1];
+        } else {
+          log(`❌ ${action}`);
+        }
+      }
+// ===== NONCE refresh attack =====
+const m2 = html.match(/action:\s*['"]refresh_attack_count['"][\s\S]*?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
+
+if (m2?.[1]) {
+  AK_SEC.nonces.refresh_attack_count = m2[1];
+}
+      const token =
+        html.match(/"securityToken"\s*:\s*"([^"]+)"/i)?.[1] ||
+        html.match(/security_token["']?\s*[:=]\s*["']([^"']+)/i)?.[1];
+
+      if (!token) {
+        log("❌ TOKEN NULL");
+        return;
+      }
+
+      AK_SEC.token = token;
+
+      AK_SEC.lastScan = Date.now();
+    })();
+
+    try { await khoangFetchPromise; }
+    finally { khoangFetchPromise = null; }
+  }
+    async function ensureValidSecurity() {
+  if (
+    !AK_SEC.token ||
+    !AK_SEC.actions.attack_user_in_mine ||
+    Date.now() - AK_SEC.lastScan > 5 * 60 * 1000
+  ) {
+    log("♻️ Token hết hạn → scan lại...");
+    await fetchKhoangMachAll(true);
+  }
+}
+// ================= GROUP =================
+function addGroup(name) {
+  if (SELECTED_GROUPS.includes(name)) return;
+
+  SELECTED_GROUPS.push(name);
+  localStorage.setItem(STORAGE_GROUPS, JSON.stringify(SELECTED_GROUPS));
+
+  log("➕ Tông " + name);
+  renderGroups();
+}
+
+function removeGroup(name) {
+  SELECTED_GROUPS = SELECTED_GROUPS.filter(g => g !== name);
+  localStorage.setItem(STORAGE_GROUPS, JSON.stringify(SELECTED_GROUPS));
+
+  log("🗑 Xoá tông " + name);
+  renderGroups();
+}
+
+function renderGroups(extraGroups = []) {
+  const box = document.getElementById("akGroupList");
+  if (!box) return;
+
+  box.innerHTML = "";
+
+  // ===== TÔNG ĐÃ CHỌN =====
+  SELECTED_GROUPS.forEach(g => {
+    const div = document.createElement("div");
+    div.className = "mineItem";
+
+    div.innerHTML = `
+      <span>✔ ${g}</span>
+      <button class="btn-del">X</button>
+    `;
+
+    div.querySelector("button").onclick = () => removeGroup(g);
+    box.appendChild(div);
+  });
+
+  // ===== TÔNG MỚI (detect từ mỏ) =====
+  extraGroups.forEach(g => {
+    if (SELECTED_GROUPS.includes(g)) return;
+
+    const div = document.createElement("div");
+    div.className = "mineItem";
+
+    div.innerHTML = `
+      <span>${g}</span>
+     <button class="btn-add">+</button>
+    `;
+
+    div.querySelector("button").onclick = () => addGroup(g);
+    box.appendChild(div);
+  });
+}
+async function loadTuVi() {
+  try {
+    log("🌐 Load Tu Vi GitHub...");
+    const res = await fetch(TUVI_URL + "?t=" + Date.now()); // tránh cache
+    TUVI_DATA = await res.json();
+    log("✅ TuVi: " + Object.keys(TUVI_DATA).length + " người");
+    // cache local (phòng lỗi mạng)
+    localStorage.setItem("tuvi_cache", JSON.stringify(TUVI_DATA));
+  } catch (e) {
+    log("❌ Lỗi load GitHub -> dùng cache");
+
+    const cache = localStorage.getItem("tuvi_cache");
+    if (cache) {
+      TUVI_DATA = JSON.parse(cache);
+      log("📦 Load cache OK");
+    }
+  }
+}
+    async function buyAttackTurn() {
+        await ensureValidSecurity();
+  // ===== CHECK TOKEN =====
+  if (
+    !AK_SEC.nonces.refresh_attack_count ||
+    !AK_SEC.token ||
+    Date.now() - AK_SEC.lastScan > 5 * 60 * 1000
+  ) {
+    log("🔄 Scan lại nonce...");
+    await fetchKhoangMachAll(true);
+  }
+
+  if (!AK_SEC.nonces.refresh_attack_count || !AK_SEC.token) {
+    log("❌ Thiếu nonce/token");
+    return null;
+  }
+
+  log("🛒 Mua lượt đánh...");
+
+const res = await callAPI({
+  action: "refresh_attack_count",
+  nonce: AK_SEC.nonces.refresh_attack_count,
+  security_token: AK_SEC.token
+});
+
+  const msg =
+    res?.data?.message ||
+    res?.message ||
+    "Mua lượt thất bại";
+
+  log("🛒 " + msg);
+
+  return res;
+}
+async function attackUser(mineId, target, retry = false) {
+    await ensureValidSecurity();
+  log(`⚔️ Đánh ${target.name}`);
+
+const res = await callAPI({
+  action: "attack_user_in_mine",
+  mine_id: mineId,
+  attack_token: target.token,
+  security: AK_SEC.actions.attack_user_in_mine,
+  security_token: AK_SEC.token
+});
+
+  const msg = res?.data?.message || res?.message || "";
+
+  // ================= WIN =================
+  if (msg.includes("đã đánh bại")) {
+    log("🏆 WIN");
+    return true;
+  }
+
+  // ================= LOSE → RETRY =================
+  if (msg.includes("thiếu chút nữa")) {
+    if (retry) {
+      log("❌ Đã retry nhưng vẫn thua");
+      return false;
+    }
+
+    log("💀 Thua → đánh lại");
+
+    const delay = 5000 + Math.random() * 1000;
+    log(`⏳ Đợi ${Math.round(delay/1000)}s rồi đánh lại`);
+    await sleep(delay);
+
+    return await attackUser(mineId, target, true);
+  }
+
+  // ================= HẾT LƯỢT =================
+if (
+  msg.includes("giới hạn tấn công") ||
+  msg.includes("0 lượt")
+) {
+  if (retry) {
+    log("❌ Retry rồi vẫn hết lượt");
+    return false;
+  }
+
+  // 🔥 delay TRƯỚC khi mua ( quan trọng)
+  const delayBefore = 5000 + Math.random() * 1000;
+  log(`⏳ Hết lượt → đợi ${Math.round(delayBefore/1000)}s rồi mua`);
+  await new Promise(r => setTimeout(r, delayBefore));
+
+  log("🛒 Mua lượt...");
+
+  const buyRes = await buyAttackTurn();
+  const ok = buyRes?.success || buyRes?.data?.success;
+
+  if (!ok) {
+    log("❌ Mua lượt thất bại");
+    return false;
+  }
+
+  // 🔥 delay SAU khi mua
+  const delayAfter = 1000 + Math.random() * 1000;
+  log(`⏳ Đợi ${Math.round(delayAfter/1000)}s rồi đánh lại`);
+  await new Promise(r => setTimeout(r, delayAfter));
+
+  log("🔁 Đánh lại sau khi mua lượt");
+
+  return await attackUser(mineId, target, true);
+}
+  // ================= COOLDOWN =================
+  if (res?.data?.cooldown) {
+    const time = res?.data?.remaining_time || 0;
+    log(`⛔ Bị phong ấn ${Math.round(time / 60)} phút`);
+    stopAuto();
+    return false;
+  }
+
+  // ================= CHƯA NHẬN THƯỞNG =================
+  if (msg.includes("phần thưởng") || msg.includes("nhận thưởng")) {
+    if (retry) {
+      log("❌ Retry rồi vẫn fail");
+      return false;
+    }
+
+    log("🎁 Chưa nhận thưởng → nhận...");
+    await claimReward();
+
+    const delay = 6000 + Math.random() * 1000;
+    log(`⏳ Đợi ${Math.round(delay/1000)}s rồi đánh lại`);
+    await sleep(delay);
+    return await attackUser(mineId, target, true);
+  }
+
+  // ================= FALLBACK =================
+  if (res?.success) {
+    log("✅ Thành công");
+    return true;
+  }
+
+  log("❌ Fail: " + msg);
+  return false;
+}
+async function enterMine(mineId, target = null) {
+  await ensureValidSecurity();
+  log("🧱 Vào mỏ...");
+
+  const res = await callAPI({
+    action: "enter_mine",
+    mine_id: mineId,
+    security: AK_SEC.actions.enter_mine,
+    security_token: AK_SEC.token
+  });
+
+  const msg = res?.data?.message || res?.message || "";
+
+  // 🔥 luôn hiện message server
+  if (msg) {
+    log("📩 " + msg);
+  }
+
+  // ================= SUCCESS =================
+  if (res?.success) {
+    log("✅ Thành công");
+    return true;
+  }
+
+  // ================= BỊ ĐÁNH BẠI =================
+  if (msg.includes("bị đánh bại") || msg.includes("hồi phục")) {
+    log("⚠️ Không vào được → chuyển sang đánh");
+
+    if (!target) {
+      log("❌ Không có target");
+      return false;
+    }
+
+    await sleep(3000);
+    return await attackUser(mineId, target);
+  }
+
+  // ================= CHƯA NHẬN THƯỞNG =================
+  if (msg.includes("phần thưởng") || msg.includes("nhận thưởng")) {
+    log("🎁 Chưa nhận thưởng → nhận...");
+    await claimReward();
+
+    await sleep(4000);
+    return await enterMine(mineId, target);
+  }
+
+  // ================= KHÁC =================
+  log("❌ Enter fail");
+  return false;
+}
+    async function claimReward() {
+        await ensureValidSecurity();
+  log("🎁 Nhận thưởng...");
+
+const res = await callAPI({
+  action: "claim_reward_km",
+  security: AK_SEC.actions.claim_reward_km,
+  security_token: AK_SEC.token
+});
+
+  if (res?.success) {
+    log("✅ Đã nhận thưởng");
+  }
+}
+async function checkMine(mine) {
+    await ensureValidSecurity();
+  const mineId = mine.id;
+
+  log(`🔎 ${mine.name} (#${mineId})`);
+
+  if (!MODE) {
+    log("⚠️ Chưa chọn mode");
+    return;
+  }
+const res = await callAPI({
+  action: "get_users_in_mine",
+  mine_id: mineId,
+  security: AK_SEC.actions.get_users_in_mine,
+  security_token: AK_SEC.token
+});
+
+  if (!res?.data?.users) {
+    log("❌ Không có user");
+    return;
+  }
+  const users = res.data.users;
+  const groups = {};
+  const players = [];
+  users.forEach(u => {
+    const name = (u.name || u.username || "").trim();
+    const html = u.group_role_html || "";
+    const match = html.match(/<a[^>]*>(.*?)<\/a>/);
+    const groupName = match ? match[1].trim() : "Không rõ";
+    const tuvi = TUVI_DATA[normalize(name)] || 0;
+    groups[groupName] = (groups[groupName] || 0) + 1;
+
+    players.push({
+      name,
+      group: groupName,
+      tuvi,
+      token: u.id
+    });
+  });
+  const groupNames = Object.keys(groups);
+  // ===== LOG GROUP =====
+  groupNames.forEach(g => {
+    log(`👉 ${g}: ${groups[g]} người`);
+  });
+
+  // ===== LOG PLAYER (GIỮ NGUYÊN) =====
+players.forEach(p => {
+  const tv = formatNumber(p.tuvi);
+  logHTML(`👤 ${p.name} | <span style="color:#00ff00">${tv}</span> | ${p.group}`);
+});
+  // ================= LOGIC =================
+  // ❗ tất cả tông phải nằm trong danh sách theo dõi
+  const allValid = groupNames.every(g => SELECTED_GROUPS.includes(g));
+
+  if (!allValid) {
+    log("⛔ Có tông khác → bỏ qua");
+    renderGroups(groupNames);
+    return;
+  }
+  const alertMsg = `🔥 MỎ CÓ VẤN ĐỀ<br>${mine.name} (#${mineId})<br>${new Date().toLocaleTimeString()}`;
+
+log("🔥  hợp lệ (đúng tông theo dõi vào ngay)");
+showAlertBox(alertMsg);
+  // ===== CHỌN TARGET (GIỮ LOG CHI TIẾT) =====
+  const validTargets = players.filter(p => p.tuvi > 0);
+  if (!validTargets.length) {
+    log("😴 Không có target");
+    renderGroups(groupNames);
+    return;
+  }
+
+  validTargets.sort((a, b) => a.tuvi - b.tuvi);
+  const target = validTargets[0];
+  log(`🎯 Chọn: ${target.name} (${target.tuvi})`);
+  // ===== ACTION =====
+  if (MODE === "attack") {
+    await attackUser(mineId, target);
+  }
+if (MODE === "insert") {
+  await enterMine(mineId, target);
+}
+
+  renderGroups(groupNames);
+}
+// ================= LOAD MINE =================
+async function loadMineList() {
+  log("📦 Tải  mỏ...");
+  await fetchKhoangMachAll(true);
+
+  if (!AK_SEC.actions.load_mines_by_type || !AK_SEC.token) {
+    log("❌ Thiếu security/token");
+    return;
+  }
+  const res = await fetch("/wp-content/themes/halimmovies-child/hh3d-ajax.php", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      action: "load_mines_by_type",
+      mine_type: "silver",
+      security: AK_SEC.actions.load_mines_by_type
+    })
+  }).then(r => r.json());
+  const list = document.getElementById("akMineList");
+  list.innerHTML = "";
+  if (!res?.data) {
+    log("❌ Không có dữ liệu mỏ");
+    return;
+  }
+  res.data.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "mineItem";
+    const name = (m.name || "").trim();
+    div.innerHTML = `
+      <span>${name} (#${m.id})</span>
+      <button class="btn-add">+</button>
+    `;
+    div.querySelector("button").onclick = () => addMine(m.id, name);
+    list.appendChild(div);
+  });
+  log("✅ Load xong " + res.data.length + " mỏ");
+}
+// ================= MINE =================
+function addMine(id, name) {
+  if (SELECTED_MINES.find(m => m.id == id)) return;
+  SELECTED_MINES.push({ id, name });
+  localStorage.setItem(STORAGE_MINES, JSON.stringify(SELECTED_MINES));
+  log("➕ " + name + " (#" + id + ")");
+  renderSelected();
+}
+function removeMine(id) {
+  SELECTED_MINES = SELECTED_MINES.filter(m => m.id != id);
+  localStorage.setItem(STORAGE_MINES, JSON.stringify(SELECTED_MINES));
+  log("🗑 Xoá mỏ " + id);
+  renderSelected();
+}
+function renderSelected() {
+  const box = document.getElementById("akSelected");
+  if (!box) return;
+  box.innerHTML = "";
+  SELECTED_MINES.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "mineItem";
+    div.innerHTML = `
+      <span>${m.name} (#${m.id})</span>
+      <button class="btn-del">X</button>
+    `;
+    div.querySelector("button").onclick = () => removeMine(m.id);
+    box.appendChild(div);
+  });
+}
+// ================= START STOP =================
+async function startAuto() {
+  if (AK.running) return;
+
+  AK.running = true;
+  setActive("akStartBtn");
+
+  await fetchKhoangMachAll(true);
+  await loadTuVi();
+
+  loop(); // không await
+}
+function stopAuto() {
+  AK.running = false;
+  setActive("akStopBtn");
+
+  if (AK.timer) {
+    clearTimeout(AK.timer);
+    AK.timer = null;
+  }
+  log("🛑 STOP");
+}
+function logHTML(msg) {
+  const time = `[${new Date().toLocaleTimeString()}] `;
+  const box = document.getElementById("akLogBox");
+
+  if (box) {
+    const div = document.createElement("div");
+    div.innerHTML = time + msg;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+}
+   async function callAPI(params, retry = false) {
+  let res;
+  try {
+    res = await fetch("/wp-content/themes/halimmovies-child/hh3d-ajax.php", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(params)
+    }).then(r => r.json());
+  } catch (e) {
+    log("❌ API lỗi mạng → retry...");
+    if (!retry) {
+      await new Promise(r => setTimeout(r, 2000));
+      return callAPI(params, true);
+    }
+    return null;
+  }
+  const msg = res?.data?.message || res?.message || "";
+  // 🔥 detect hết phiên / security
+  if (
+    msg.includes("phiên") ||
+    msg.includes("hết hạn") ||
+    msg.includes("invalid") ||
+    msg.includes("security") ||
+    msg.includes("token")
+  ) {
+    if (retry) {
+      log("❌ Retry rồi vẫn lỗi phiên");
+      return res;
+    }
+
+    log("♻️ Hết phiên → fetch lại security...");
+    await fetchKhoangMachAll(true);
+    const delay = 2000 + Math.random() * 1000;
+    await sleep(delay);
+
+    return await callAPI(params, true);
+  }
+  return res;
+}
+    function formatNumber(num) {
+  if (!num) return "0";
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+    function normalize(name) {
+  return name.toLowerCase().trim();
+}
+async function loop() {
+  while (AK.running) {
+    const startTime = Date.now();
+
+    for (const m of SELECTED_MINES) {
+      try {
+        log(`👉 Kiểm tra ${m.name} (#${m.id})`);
+        await checkMine(m);
+      } catch (e) {
+        log("❌ Lỗi checkMine: " + e.message);
+      }
+
+      await sleep(1000);
+    }
+
+    // 🔥 đảm bảo đúng chu kỳ check
+    const elapsed = Date.now() - startTime;
+    const waitTime = Math.max(0, AK.checkSeconds * 1000 - elapsed);
+
+    log(`⏳ Đợi ${Math.round(waitTime/1000)}s vòng tiếp`);
+    await sleep(waitTime);
+  }
+}
+  // ================= INIT =================
+function init() {
+  createUI();
+  const savedMode = localStorage.getItem("hh3d_mode");
+  if (savedMode) {
+    setMode(savedMode);
+  }
+  log("✅ Sẵn Sàng");
+}
+init();
+function initAlertBox() {
+  if (document.getElementById("akAlertBox")) return;
+
+  const box = document.createElement("div");
+  box.id = "akAlertBox";
+
+  box.style.position = "fixed";
+  box.style.top = "80px";
+  box.style.left = "20px";
+  box.style.width = "260px";
+  box.style.background = "#111";
+  box.style.border = "1px solid #333";
+  box.style.borderRadius = "10px";
+  box.style.zIndex = 999999;
+  box.style.fontSize = "12px";
+  box.style.fontFamily = "monospace";
+  box.style.cursor = "pointer";
+
+  box.innerHTML = `
+    <div id="akAlertHeader" style="padding:8px;color:#fff;background:#222;border-radius:10px">
+      🔥 Chưa có cảnh báo
+    </div>
+    <div id="akAlertList" style="display:none;max-height:250px;overflow-y:auto"></div>
+  `;
+
+  document.body.appendChild(box);
+
+  // toggle mở / đóng
+  box.onclick = () => {
+    const list = document.getElementById("akAlertList");
+    list.style.display = list.style.display === "none" ? "block" : "none";
+  };
+}
+function showAlertBox(text) {
+  initAlertBox();
+
+  const header = document.getElementById("akAlertHeader");
+  const list = document.getElementById("akAlertList");
+
+  const time = new Date().toLocaleTimeString();
+
+  // 👉 update header (chỉ hiện cái mới nhất)
+  header.innerHTML = `🔥 ${text} <br><span style="font-size:10px;color:#aaa">${time}</span>`;
+
+  // 👉 thêm vào list (lịch sử)
+  const item = document.createElement("div");
+
+  item.style.padding = "6px";
+  item.style.borderTop = "1px solid #222";
+  item.style.color = "#ddd";
+
+  item.innerHTML = `🔥 ${time} - ${text}`;
+
+  list.prepend(item);
+
+  // giới hạn 12 dòng
+  while (list.children.length > 12) {
+    list.removeChild(list.lastChild);
+  }
+}
+};
 (function() {
 'use strict';
 if (!location.hostname.includes("hoathinh3d.")) return;
@@ -191,271 +1208,17 @@ menu.innerHTML='<div style="text-align:center;margin-bottom:8px"><img src="'+bui
 [["Phúc Lợi","PhucLoi",4],["Thí Luyện","ThiLuyen",3],["Hoang Vực","HoangVuc",5],["Bí Cảnh","BiCanh",5]].map(([t,k,m])=>'<label class="menu-row"><span class="menu-title">'+t+' <span id="count'+k+'" class="menu-count">0/'+m+'</span></span><div class="switch"><input type="checkbox" id="toggle'+k+'"><span class="slider"></span></div></label>').join("")+
 '<button id="hapThuBtn" class="hapthu-btn hapthu-hint">✨ Hấp Thụ Linh Thạch</button><label class="menu-row"><span class="menu-title">Tiến Độ</span><div class="switch"><input type="checkbox" id="toggleTienDo"><span class="slider"></span></div></label><div style="margin-top:6px;font-size:12px"><div style="color:#bbb;margin-bottom:2px">🌐 URL web</div><div style="display:flex;align-items:center;gap:6px;width:100%"><input id="domainConfigInput" type="text" placeholder="vd: hoathinh3d.li" style="flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;border-radius:4px;border:1px solid #555;background:#111;color:#fff;font-size:12px"><button id="autoLoginSettingBtn" style="flex:0 0 auto;width:32px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #555;background:#222;color:#fff;cursor:pointer;font-size:14px">⚙️</button></div></div>';
 document.body.appendChild(menu);
-    document.getElementById("autoLoginSettingBtn")
-  ?.addEventListener("click", openSettingsPopup);
-async function openSettingsPopup() {
-  if (document.getElementById("hh3d-setting-popup")) return;
-const raw = await GM_getValue(STORAGE_KEY, null);
-      
-let saved;
-if (!raw || !Array.isArray(raw.accounts)) {
-  saved = {
-    accounts: [],
-    activeId: null
-  };
-  await GM_setValue(STORAGE_KEY, saved);
-} else {
-  saved = raw;
-}
-  const popup = document.createElement("div");
-  popup.id = "hh3d-setting-popup";
-  popup.style.cssText = `position:fixed;top:50%;left:50%; transform:translate(-50%,-50%);background:#fff;color:#000; padding:20px; border-radius:12px;z-index:2147483647;
-    width:300px; box-shadow:0 10px 30px rgba(0,0,0,.3);font-family:sans-serif;
-  `;
-  popup.innerHTML = `
-    <h3 style="margin:0 0 12px;text-align:center;"> Auto Login </h3><input id="hh3d-user" placeholder="Username"
-      style="width:100%;margin-bottom:8px;padding:8px;border-radius:8px;border:1px solid #ccc;box-sizing:border-box;"><div style="position:relative;margin-bottom:10px;"><input id="hh3d-pass" type="password"
-    placeholder="Password"
-    style="width:100%;padding:8px 36px 8px 8px;border-radius:8px;border:1px solid #ccc;box-sizing:border-box;">
-  <span id="hh3d-toggle-pass" style="position:absolute;right:10px; top:50%;transform:translateY(-50%);
-      cursor:pointer; font-size:14px; user-select:none;
-    ">👁</span></div>
-    <button id="hh3d-add" style="width:100%;padding:8px;border:none;border-radius:8px;background:#28a745;color:#fff;font-weight:bold;cursor:pointer;">➕ Add </button>
-    <button id="hh3d-login"
-  style="width:100%;margin-top:6px;padding:8px;border:none;border-radius:8px;background:#007bff;color:#fff;font-weight:bold;cursor:pointer;">
-   Đăng nhập
-</button>
-    <div id="hh3d-list"
-      style="margin-top:12px;max-height:140px;overflow:auto;"></div>
-    <button id="hh3d-close"
-      style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#ddd;cursor:pointer;">
-      Close
-    </button>
-  `;
- document.body.appendChild(popup);
-const passInput = document.getElementById("hh3d-pass");
-const toggleBtn = document.getElementById("hh3d-toggle-pass");
-toggleBtn.onclick = () => {
-  if (passInput.type === "password") {
-    passInput.type = "text";
-    toggleBtn.textContent = "🙈";
+document.getElementById("autoLoginSettingBtn")
+  ?.addEventListener("click", openKhoangMenu);
+
+function openKhoangMenu() {
+  if (typeof initAutoKhoang === "function") {
+    initAutoKhoang();
   } else {
-    passInput.type = "password";
-    toggleBtn.textContent = "👁";
-  }
-};
-  const listDiv = document.getElementById("hh3d-list");
-function renderList() {
-  listDiv.innerHTML = "";
-  if (!saved.accounts || saved.accounts.length === 0) {
-    listDiv.innerHTML = `
-      <div style="font-size:12px;color:#777;text-align:center;">
-        No accounts saved
-      </div>`;
-    return;
-  }
-      
-  saved.accounts.forEach(acc => {
-    const item = document.createElement("div");
-    const isActive = acc.id === saved.activeId;
-    item.style.cssText = `
-      padding:6px 8px;
-      border-radius:6px;margin-bottom:6px; cursor:pointer;
-      display:flex;justify-content:space-between;align-items:center; background:${isActive ? "#007bff" : "#f1f1f1"};color:${isActive ? "#fff" : "#000"};font-size:13px;
-    `;
-    item.innerHTML = ` <span>  ${acc.username}${isActive ? " ✔" : ""}
-      </span>  <span class="material-icons" style="cursor:pointer;">delete</span>
-    `;
-// CLICK cả dòng để active
-    item.onclick = async () => {
-      saved.activeId = acc.id;
-      await GM_setValue(STORAGE_KEY, saved);
-      // fill input theo acc được chọn
-      document.getElementById("hh3d-user").value = acc.username;
-      document.getElementById("hh3d-pass").value = acc.password;
-      renderList();
-    };
-    // Xóa
-    item.querySelector("span:last-child").onclick = async (e) => {
-      e.stopPropagation();
-      saved.accounts = saved.accounts.filter(a => a.id !== acc.id);
-      if (saved.activeId === acc.id) {
-        saved.activeId = null;
-        document.getElementById("hh3d-user").value = "";
-        document.getElementById("hh3d-pass").value = "";
-      }
-      await GM_setValue(STORAGE_KEY, saved);
-      renderList();
-    };
-
-    listDiv.appendChild(item);
-  });
-  // Sau khi render xong -> nếu có active thì fill input
-  const activeAcc = saved.accounts.find(a => a.id === saved.activeId);
-  if (activeAcc) {
-    document.getElementById("hh3d-user").value = activeAcc.username;
-    document.getElementById("hh3d-pass").value = activeAcc.password;
+    alert("Chưa load script khoáng!");
   }
 }
-  // ADD ACCOUNT
-  document.getElementById("hh3d-add").onclick = async () => {
-    const username = document.getElementById("hh3d-user").value.trim();
-    const password = document.getElementById("hh3d-pass").value.trim();
-    if (!username || !password) return;
-    const newAcc = {
-      id: Date.now(),
-      username,
-      password
-    };
-          
-    saved.accounts.push(newAcc);
-    saved.activeId = newAcc.id;
-    await GM_setValue(STORAGE_KEY, saved);
-    document.getElementById("hh3d-user").value = "";
-    document.getElementById("hh3d-pass").value = "";
-    renderList();
-  };
-document.getElementById("hh3d-login").onclick = async () => {
 
-  const saved = await GM_getValue(STORAGE_KEY, {
-    accounts: [],
-    activeId: null
-  });
-
-  if (!saved.activeId) {
-    showToast("Chưa chọn tài khoản!");
-    return;
-  }
-  // luôn bắt đầu bộ đếm 10s reload
-  showToast("Sẽ Hoàn thành sau 10s");
-  setTimeout(() => {
-    location.reload();
-  }, 10000);
-  const logoutBtn = document.querySelector('a[href="/my-account/user-logout"]');
-
-  if (logoutBtn) {
-    showToast("Đang đăng xuất...");
-
-    await logoutViaIframe();
-
-    showToast("Đang đăng nhập tài khoản mới...");
-    setTimeout(() => autoLogin(), 800);
-
-    return;
-  }
-
-  showToast("Đang đăng nhập...");
-  autoLogin();
-
-};
-async function logoutViaIframe() {
-  return new Promise(resolve => {
-
-    const iframe = document.createElement("iframe");
-
-        
-iframe.style.cssText = `
-  position:fixed;
-  bottom:0;
-  right:0;
-  width:1px;
-  height:1px;
-  border:none;
-  opacity:0;
-`;
-
-    iframe.src = "/my-account/user-logout";
-
-    document.body.appendChild(iframe);
-
-    iframe.onload = () => {
-      console.log("iframe loaded:", iframe.contentWindow.location.href);
-
-      const watcher = setInterval(() => {
-        try {
-          console.log("iframe url:", iframe.contentWindow.location.href);
-        } catch (e) {}
-      }, 500);
-
-      setTimeout(() => {
-        clearInterval(watcher);
-        console.log("iframe logout done");
-        resolve();
-      }, 2000);
-    };
-
-  });
-}
-  document.getElementById("hh3d-close").onclick = () => popup.remove();
-    renderList();
-}
-
-  /* ================= TURNSTILE ================= */
-  function waitTurnstile() {
-    return new Promise(resolve => {
-      const timer = setInterval(() => {
-        const el = document.querySelector("#cf-turnstile-response");
-        if (el && el.value && el.value.length > 20) {
-          clearInterval(timer);
-          resolve(el.value);
-        }
-      }, 300);
-    });
-  }
-  /* ================= AUTO LOGIN ================= */
-async function autoLogin() {
-  const saved = await GM_getValue(STORAGE_KEY, {
-    accounts: [],
-    activeId: null
-  });
-
-      
-  if (!saved.activeId) return;
-
-  const activeAcc = saved.accounts.find(a => a.id === saved.activeId);
-  if (!activeAcc) return;
-
-  const token = await waitTurnstile();
-
-  const payload = {
-    username: activeAcc.username,
-    password: activeAcc.password,
-    remember: 0,
-    cf_turnstile_response: token
-  };
-  const res = await fetch("/wp-json/hh3d/v1/dang-nhap", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "XMLHttpRequest"
-    },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (data?.message) showToast(data.message);
-  if (res.ok) {
-    setTimeout(() => location.reload(), 1500);
-  }
-}
-function isLoggedOut() {
-  return document.querySelector("#cf-turnstile-response");
-}
-let runCount = 0;
-const MAX_RUN = 3;
-const loginInterval = setInterval(() => {
-  runCount++;
-  console.log(`interval running: ${runCount}`);
-  if (isLoggedOut()) {
-    console.log("calling autoLogin");
-    autoLogin();
-  }
-
-  if (runCount >= MAX_RUN) {
-    console.log("stop interval");
-    clearInterval(loginInterval);
-  }
-}, 7500);
     function autoScaleMenu() {
   const rect = menu.getBoundingClientRect();
   const availableHeight = window.innerHeight - 80; // trừ top 60 + margin
@@ -6492,7 +7255,6 @@ else if(ratio >= 5) per = 0.7;
 else if(ratio >= 4) per = 0.6;
 else if(ratio >= 3) per = 0.5;
 else if(ratio >= 2) per = 0.4;
-
 // % thay đổi
 const bonus = (diff / 1000) * per;
 
@@ -6502,6 +7264,7 @@ const rate = 50 + bonus;
 return Math.round(rate);
 }
 
+            
 // ===== LẤY UID =====
 function getUserId(img){
 
@@ -6562,8 +7325,6 @@ getMyTuvi();
 loadData();
 setInterval(inject,1000);
 
-
- 
 })();
 })();
 })();
