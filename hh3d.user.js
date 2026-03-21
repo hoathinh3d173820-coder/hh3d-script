@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.1
+// @version      1.2
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -238,7 +238,7 @@ style.innerHTML = `
   color: #000 !important;
 }
 
-/* ACTIVE
+/* ACTIVE*/
 #akPanel button.active {
   background: #00d4ff !important;
   color: #000 !important;
@@ -274,7 +274,7 @@ style.innerHTML = `
   background: #f33 !important;
 }
 
-/* INPUT
+/* INPUT*/
 #akPanel input {
   width: 50px;
   background: #111 !important;
@@ -293,7 +293,7 @@ style.innerHTML = `
   font-size: 11px;
 }
 
-/* TOGGLE BUTTON
+/* TOGGLE BUTTON*/
 #akToggleBtn {
   position: fixed;
   top: 80px;
