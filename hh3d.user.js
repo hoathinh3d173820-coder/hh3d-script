@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.2
+// @version      1.3
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -60,14 +60,14 @@ const AK_SEC = {
   let SELECTED_MINES = JSON.parse(localStorage.getItem(STORAGE_MINES) || "[]");
   let khoangFetchPromise = null;
 
-  const ACTION_PATTERNS = {
-    load_mines_by_type: /action:\s*['"]load_mines_by_type['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-      attack_user_in_mine: /action:\s*['"]attack_user_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-enter_mine: /action:\s*['"]enter_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-claim_reward_km: /action:\s*['"]claim_reward_km['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-      refresh_attack_count: /action:\s*['"]refresh_attack_count['"][\s\S]*?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-    get_users_in_mine:  /action:\s*['"]get_users_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  };
+const ACTION_PATTERNS = {
+  enter_mine:         /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmEnter\s*:\s*)?['"]enter_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  get_users_in_mine:  /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmUsers\s*:\s*)?['"]get_users_in_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  claim_mycred_reward:/['"]claim_mycred_reward['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  attack_user_in_mine:/['"]attack_user_in_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  load_mines_by_type: /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmList\s*:\s*)?['"]load_mines_by_type['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  refresh_attack_count:/(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmRefresh\s*:\s*)?['"]refresh_attack_count['"][\s\S]{0,400}?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+};
   // ================= UI =================
 function createUI() {
   if (document.getElementById("akPanel")) return;
@@ -1106,6 +1106,7 @@ function showAlertBox(text) {
 };
 (function() {
 'use strict';
+
 if (!location.hostname.includes("hoathinh3d.")) return;
 const DOMAIN_KEY = "HH3D_CUSTOM_DOMAIN";
 (function autoSyncDomain() {
@@ -3459,39 +3460,87 @@ if (ok) markRun(runKey);
 }
     // ⏰ Scheduler
 setInterval(autoDoThachByTime, 30_000);
-    // VÒNG QUAY
-const SPIN_API = buildUrl("/wp-json/lottery/v1/spin");
+ // ======================
+// ⏳ WAIT hh3dData
+// ======================
+async function getSpinApi() {
+  let retry = 0;
+  while (!unsafeWindow.hh3dData || !unsafeWindow.hh3dData.act) {
+    await new Promise(r => setTimeout(r, 100));
+    retry++;
+
+    if (retry % 10 === 0) {
+      console.log("...chưa có hh3dData (unsafeWindow)", retry);
+    }
+    if (retry > 200) {
+      console.error("❌ Không load được hh3dData (unsafeWindow)");
+      return null;
+    }
+  }
+  const spinId = unsafeWindow.hh3dData.act.lotterySpin;
+  console.log("🎯 lotterySpin =", spinId);
+  return `${location.origin}/wp-json/lottery/v1/${spinId}`;
+}
+// ======================
+// 🎯 SPIN
+// ======================
 async function spinLottery(times) {
   try {
+    console.log("🚀 Bắt đầu spinLottery");
+
     const securityToken = await getSecurityToken(location.href);
+    console.log("🔑 securityToken =", securityToken);
     if (!securityToken) {
       showToast("❌ Không lấy được security token");
       return;
     }
+
+    const SPIN_API = await getSpinApi();
+
+    if (!SPIN_API) {
+      showToast("❌ Không lấy được API");
+      return;
+    }
     const wpNonce = localStorage.getItem("HH3D_NONCE_WP") || "";
+    console.log("🧾 wpNonce =", wpNonce);
+
     times = Number(times);
     if (!times || times < 1) times = 4;
+
     for (let i = 1; i <= times; i++) {
-  const resp = await fetch(SPIN_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-WP-Nonce": wpNonce,
-      "x-security-token": securityToken
-    },
-    credentials: "include"
-  });
-  const data = await resp.json();
-  if (!data.success) {
-    showToast(`❌ ${data.message || "Quay lỗi"}`);
-    break;
-  }
-  showToast(`🎉 ${data.message}`);
-  await sleep(600);
-}
+      console.log(`🎰 Lần quay ${i}`);
+      const resp = await fetch(SPIN_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": wpNonce,
+          "x-security-token": securityToken
+        },
+        credentials: "include"
+      });
+      console.log("📥 Status:", resp.status);
+      const text = await resp.text();
+      console.log("📦 Raw response:", text);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("❌ Không parse được JSON");
+        return;
+      }
+      if (!data.success) {
+        showToast(`❌ ${data.message || "Quay lỗi"}`);
+        break;
+      }
+      showToast(`🎉 ${data.message}`);
+      await sleep(600);
+    }
   } catch (e) {
+    console.error("💥 Lỗi:", e);
   }
 }
+// ======================
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ==================== TẾ LỄ (REQUEST CHÍNH + IFRAME DỰ PHÒNG) ====================
 let iframeTeLe = null;
@@ -4580,15 +4629,17 @@ const AK_SEC = {
   lastScan: 0
 };
 const ACTION_PATTERNS = {
-  attack_user_in_mine: /action:\s*['"]attack_user_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  load_mines_by_type: /action:\s*['"]load_mines_by_type['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  get_users_in_mine:  /action:\s*['"]get_users_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  enter_mine:         /action:\s*['"]enter_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  claim_reward_km:    /action:\s*['"]claim_reward_km['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  claim_mycred_reward:/action:\s*['"]claim_mycred_reward['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  change_mine_owner:  /action:\s*['"]change_mine_owner['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  buy_item_khoang:    /action:\s*['"]buy_item_khoang['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
-  refresh_attack_count:/action:\s*['"]refresh_attack_count['"][\s\S]*?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  enter_mine:         /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmEnter\s*:\s*)?['"]enter_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  get_users_in_mine:  /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmUsers\s*:\s*)?['"]get_users_in_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  change_mine_owner:  /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmOwner\s*:\s*)?['"]change_mine_owner['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  claim_mycred_reward:/['"]claim_mycred_reward['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  claim_reward_km:    /['"]claim_reward_km['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  attack_user_in_mine:/['"]attack_user_in_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  leave_mine:         /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmLeave\s*:\s*)?['"]leave_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  buy_item_khoang:    /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmBuy\s*:\s*)?['"]buy_item_khoang['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  load_mines_by_type: /(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmList\s*:\s*)?['"]load_mines_by_type['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  check_and_display_reward:/(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmCheck\s*:\s*)?['"]check_and_display_reward['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
+  refresh_attack_count:/(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmRefresh\s*:\s*)?['"]refresh_attack_count['"][\s\S]{0,400}?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i,
 };
     let khoangFetchPromise = null;
 async function fetchKhoangMachAll(force = false) {
@@ -6437,83 +6488,127 @@ toggleBC.onchange = () => {const on = toggleBC.checked;localStorage.setItem("biC
 toggleTD.onchange=()=>{const on=toggleTD.checked;localStorage.setItem("tienDoToggle",on?"on":"off");if(on)getBHDProgress()};
 togglePL.onchange=()=>{const on=togglePL.checked;localStorage.setItem("phucloiToggle",on?"on":"off");if(on)autoPhucLoiHidden();else{localStorage.removeItem("nextRun_PL");if(typeof stopAutoPhucLoiHidden==="function")stopAutoPhucLoiHidden()}};
 toggleHV.onchange=()=>{const on=toggleHV.checked;localStorage.setItem("hoangvucToggle",on?"on":"off");if(on)autoHoangVucHidden();else{if(typeof stopAutoHoangVucHidden==="function")stopAutoHoangVucHidden();showToast("🛑 Auto Hoang Vực đã tắt.","error")}};
-// HIỆN THÔNG TIN MỎ
+// HIỆN THÔNG TIN MỎ (FIX FULL)
 (function HH3D_MINE_UI_STABLE() {
     let LAST_MINE_DATA = null;
     let BATQUAI_FIXED = false;
-    // VẼ UI – INFO
+
+    /**************** UI ****************/
     function renderStats(data) {
         if (!data || !data.users) return;
+
         const bonus_display = document.querySelector('#bonus-display');
-        const batquai_section = document.querySelector('#batquai-section');
-        const pagination = document.querySelector('.pagination');
-        const page_indicator = document.querySelector('#page-indicator');
         if (!bonus_display) return;
-        let enemies = 0;
-        let dongMon = 0;
-        let lienMinh = 0;
+
+        let enemies = 0, dongMon = 0, lienMinh = 0;
+
         data.users.forEach(u => {
             if (u.dong_mon) dongMon++;
             else if (u.lien_minh) lienMinh++;
             else enemies++;
         });
+
         let info = bonus_display.querySelector('.hh3d-mine-info');
         if (!info) {
             info = document.createElement('div');
             info.className = 'hh3d-mine-info';
-            info.style.fontSize = '11px';
-            info.style.marginTop = '2px';
-            info.style.lineHeight = '1.4';
+            info.style.cssText = `
+                font-size:11px;
+                margin-top:2px;
+                line-height:1.4;
+            `;
             bonus_display.prepend(info);
         }
-        info.innerHTML = `<div>🩸 Kẻ địch: <b>${enemies}</b></div><div>🤝 Liên minh: <b>${lienMinh}</b></div><div>☯️ Đồng môn: <b>${dongMon}</b></div><div>⚔️ Lượt còn lại: <b>${data.attacks_left ?? 0}</b></div>`;
-        [bonus_display, batquai_section, pagination, page_indicator].forEach(el => {
-            if (!el) return;
-            el.style.setProperty('display', 'block', 'important');
-        });
+
+        info.innerHTML = `
+            🩸 Kẻ địch: <b>${enemies}</b><br>
+            🤝 Liên minh: <b>${lienMinh}</b><br>
+            ☯️ Đồng môn: <b>${dongMon}</b><br>
+            ⚔️ Lượt còn lại: <b>${data.attacks_left ?? 0}</b>
+        `;
     }
-    // BÁT QUÁI
+
     function fixBatQuaiOnce(data) {
         if (BATQUAI_FIXED) return;
         if (!data || typeof data.bat_quai_tran_do_count !== 'number') return;
+
         const section = document.querySelector('#batquai-section');
         if (!section) return;
-        const target = Array.from(section.querySelectorAll('span, div'))
+
+        const target = Array.from(section.querySelectorAll('*'))
             .find(el => /\d+\s*\/\s*8/.test(el.textContent));
+
         if (!target) return;
+
         target.textContent = `${data.bat_quai_tran_do_count}/8`;
         BATQUAI_FIXED = true;
     }
-          
-    // HANDLER DATA
+
     function handleMineData(data) {
         LAST_MINE_DATA = data;
         BATQUAI_FIXED = false;
-        renderStats(data);
-        // delay nhẹ để đợi UI render xong
+
+        setTimeout(() => renderStats(data), 100);
+        setTimeout(() => renderStats(data), 500);
+
         setTimeout(() => fixBatQuaiOnce(data), 300);
         setTimeout(() => fixBatQuaiOnce(data), 800);
     }
-    // XHR HOOK
+
+    /**************** FETCH HOOK (QUAN TRỌNG) ****************/
+    const _fetch = window.fetch;
+    window.fetch = async function (...args) {
+        const res = await _fetch.apply(this, args);
+
+        try {
+            const clone = res.clone();
+            const text = await clone.text();
+
+            if (text.includes('"users"') && text.includes('"attacks_left"')) {
+                const json = JSON.parse(text);
+
+                if (json?.success && json?.data?.users) {
+                    console.log('[HH3D] FETCH mine data');
+                    handleMineData(json.data);
+                }
+            }
+        } catch (e) {}
+
+        return res;
+    };
+
+    /**************** XHR HOOK ****************/
     const _open = XMLHttpRequest.prototype.open;
     const _send = XMLHttpRequest.prototype.send;
+
     XMLHttpRequest.prototype.open = function (method, url) {
-        this.__hh3d_url = url;
+        this.__url = url;
         return _open.apply(this, arguments);
     };
+
     XMLHttpRequest.prototype.send = function (body) {
         this.addEventListener('load', () => {
             try {
-                if (
-                    this.__hh3d_url?.includes('ajax') &&
-                    typeof body === 'string' &&
-                    body.includes('action=get_users_in_mine')
-                ) {
+                if (!this.responseText) return;
+
+                if (this.responseText.includes('"users"') && this.responseText.includes('"attacks_left"')) {
                     const json = JSON.parse(this.responseText);
-                    if (json?.success && json?.data) { handleMineData(json.data);
-    
-}
-                } } catch (e) {console.error('[HH3D] parse error', e); } });return _send.apply(this, arguments);};
+
+                    if (json?.success && json?.data?.users) {
+                        console.log('[HH3D] XHR mine data');
+                        handleMineData(json.data);
+                    }
+                }
+
+            } catch (e) {
+                console.error('[HH3D] parse error', e);
+            }
+        });
+
+        return _send.apply(this, arguments);
+    };
+
+})();
 (function () {
   const STYLE_ID = "khoang-fix-10-style";
   function injectFixStyle() {
@@ -6582,6 +6677,71 @@ function ensureButton() {
 const observer = new MutationObserver(ensureButton);
 observer.observe(document.body, { childList: true, subtree: true });
 ensureButton();
+(function () {
+  const STYLE_ID = "khoang-fix-10-style";
+  function injectFixStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.innerHTML = `
+      /* ===== FIX 10 Ô + SCROLL ===== */
+      #user-list {display: flex !important;flex-wrap: nowrap !important;overflow-x: auto !important;overflow-y: hidden !important;gap: 0 !important;margin-left: 0 !important;padding: 0 0 6px 0 !important;}
+      .user-row {flex: 0 0 9.5% !important;width: 9.5% !important;max-width: 9.5% !important;min-width: 0 !important;box-sizing: border-box;padding: 4px !important;}
+      .user-row * {min-width: 0 !important;max-width: 100% !important;box-sizing: border-box;}
+      .modal-content {width: 100vw !important;max-width: none !important;}
+      .pagination, #page-indicator {display: none !important;}
+  @media (max-width: 768px) {
+  .avatar-km {background: none !important;border: none !important;box-shadow: none !important;padding: 0 !important;
+  }.avatar-km::before,.avatar-km::after { display: none !important;content: none !important;
+  }
+}.flag-default,.flag-item-6,.flag-item-7 { display: none !important; }[class^="tong-cap-"] {display: none !important; } }`;
+    document.head.appendChild(style);
+  }
+  function removeFixStyle() {
+    const s = document.getElementById(STYLE_ID);
+    if (s) s.remove();
+  }
+function ensureButton() {
+  const modal = document.querySelector(".modal-content");
+  if (!modal) return;
+  if (getComputedStyle(modal).position === "static") {
+    modal.style.position = "relative";
+  }
+  if (modal.querySelector(".khoang-toggle-btn")) return;
+  const btn = document.createElement("button");
+  btn.className = "khoang-toggle-btn";
+  btn.textContent = "<>";
+  btn.style.cssText = `
+  position:absolute;top:1.5px;right:8px;
+  z-index:999999;background: rgba(255,255,255,0.03);
+  color: #8b949e;border: none;outline: none;border-radius: 10px;padding: 6px 12px;
+  cursor: pointer;font-size: 12px;font-weight: 500;letter-spacing: .4px;
+  transition: all .25s ease;
+`;
+  btn.onmouseenter = () => {
+    btn.style.background = "rgba(255,77,79,0.1)";
+    btn.style.boxShadow = "0 0 10px rgba(255,77,79,.8)";
+  };
+  btn.onmouseleave = () => {
+    btn.style.background = "transparent";
+    btn.style.boxShadow = "0 0 6px rgba(255,77,79,.4)";
+  };
+  let on = false;
+  btn.onclick = function () {
+    on = !on;
+    if (on) {
+      injectFixStyle();
+      btn.textContent = "↩";
+    } else {
+      removeFixStyle();
+      btn.textContent = "<>";
+    }
+  };
+  modal.appendChild(btn);
+}
+const observer = new MutationObserver(ensureButton);
+observer.observe(document.body, { childList: true, subtree: true });
+ensureButton();
     (function () {
 const API_URL = "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
   // ================== STORAGE =================
@@ -6590,6 +6750,7 @@ const KM_SEC = {
   mine_security: null,
   refresh_nonce: null,
   token: null,
+  actMap: {},       // hh3dData.act mapping (e.g. kmEnter -> km_enter)
   lastScan: 0
 };
 
@@ -6600,30 +6761,43 @@ const KM_SEC = {
   function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
   }
+  // Local resolveAction for this IIFE (reads from KM_SEC.actMap or window.hh3dData)
+  function resolveAction(actKey, fallback) {
+    return KM_SEC.actMap?.[actKey] || window.hh3dData?.act?.[actKey] || fallback;
+  }
   // QUÉT SECURITY TỪ DOM
+  // Updated for new pattern: hh3dData.act.kmXxx : 'fallback_name' ... security: 'nonce'
   function scanSecurityFromDOM() {
+    // 1) Try reading hh3dData directly from the page (fastest, most reliable)
+    if (window.hh3dData) {
+      if (window.hh3dData.act) KM_SEC.actMap = window.hh3dData.act;
+      if (window.hh3dData.securityToken) KM_SEC.token = window.hh3dData.securityToken;
+    }
+    // 2) Scan inline scripts for per-action security nonces
     const html = document.documentElement.innerHTML;
-const mMine = html.match(/action:\s*['"]get_users_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
+const mMine = html.match(/(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmUsers\s*:\s*)?['"]get_users_in_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
 if (mMine?.[1]) {
   KM_SEC.mine_security = mMine[1];
 }
-    const m1 = html.match(/action:\s*['"]attack_user_in_mine['"][\s\S]*?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
+    const m1 = html.match(/['"]attack_user_in_mine['"][\s\S]{0,400}?security:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
     if (m1?.[1]) {
       KM_SEC.attack_security = m1[1];
     }
-    const m2 = html.match(/action:\s*['"]refresh_attack_count['"][\s\S]*?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
+    const m2 = html.match(/(?:hh3dData\.act\)?\s*\?\s*hh3dData\.act\.kmRefresh\s*:\s*)?['"]refresh_attack_count['"][\s\S]{0,400}?nonce:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i);
     if (m2?.[1]) {
       KM_SEC.refresh_nonce = m2[1];
     }
-    const token =
-      html.match(/"securityToken"\s*:\s*"([^"]+)"/i)?.[1] ||
-      html.match(/security_token["']?\s*[:=]\s*["']([^"']+)/i)?.[1];
-    if (token) {
-      KM_SEC.token = token;
+    // 3) Token fallback from HTML if not already found from hh3dData
+    if (!KM_SEC.token) {
+      const token =
+        html.match(/"securityToken"\s*:\s*"([^"]+)"/i)?.[1] ||
+        html.match(/security_token["']?\s*[:=]\s*["']([^"']+)/i)?.[1];
+      if (token) {
+        KM_SEC.token = token;
+      }
     }
     KM_SEC.lastScan = Date.now();
   }
-        
   async function getSecurityBundle() {
     if (!KM_SEC.attack_security || !KM_SEC.token || Date.now() - KM_SEC.lastScan > 5 * 60 * 1000) {
       scanSecurityFromDOM();
@@ -6638,7 +6812,6 @@ if (mMine?.[1]) {
     };
   }
 //  HOOK XHR
-        
 (function () {
   const origOpen = XMLHttpRequest.prototype.open;
   const origSend = XMLHttpRequest.prototype.send;
@@ -6655,7 +6828,7 @@ if (mMine?.[1]) {
         } else if (body instanceof URLSearchParams) {
           bodyText = body.toString();
         }
-        if (bodyText.includes("action=get_users_in_mine")) {
+        if (bodyText.includes("action=get_users_in_mine") || bodyText.includes("action=" + resolveAction("kmUsers", ""))) {
           const params = new URLSearchParams(bodyText);
           const mineId = params.get("mine_id");
           if (mineId) {
@@ -6680,7 +6853,7 @@ if (mMine?.[1]) {
     return;
   }
   const fd = new FormData();
-  fd.append("action", "get_users_in_mine");
+  fd.append("action", resolveAction("kmUsers", "get_users_in_mine"));
   fd.append("mine_id", mineId);
   fd.append("security_token", KM_SEC.token);
   fd.append("security", KM_SEC.mine_security);
@@ -6695,7 +6868,6 @@ if (mMine?.[1]) {
     console.warn("[KM] Lỗi refresh mỏ:", e);
   }
 }
- 
   //  HÀM ĐÁNH
 async function attackUserInMine(attackToken, mineId) {
   const { security, token } = await getSecurityBundle();
@@ -6704,13 +6876,12 @@ async function attackUserInMine(attackToken, mineId) {
   await sleep(100);
 
   const fd = new FormData();
-  fd.append("action", "attack_user_in_mine");
+  fd.append("action", resolveAction("kmAttack", "attack_user_in_mine"));
   fd.append("attack_token", attackToken); // 🔥 đổi ở đây
   fd.append("mine_id", mineId);
   fd.append("security", security);
   fd.append("security_token", token);
 
-      
   const res = await fetch(API_URL, {
     method: "POST",
     credentials: "include",
@@ -6731,7 +6902,6 @@ async function attackUserInMine(attackToken, mineId) {
   }
 
   return res;
-            
 }
   window.attackUserInMine = attackUserInMine;
 function createFastAttackBtn(row) {
@@ -6792,7 +6962,6 @@ function createFastAttackBtn(row) {
       btn.innerHTML = "❌";
     }
 
-      
     setTimeout(() => {
       btn.innerHTML = old;
       delete btn.dataset.loading;
@@ -6851,8 +7020,6 @@ function createFastAttackBtn(row) {
       btn.style.pointerEvents = "auto";
     }
   };
-
-        
   if (!document.getElementById("ak-spin-style")) {
     const style = document.createElement("style");
     style.id = "ak-spin-style";
@@ -6876,7 +7043,6 @@ function createFastAttackBtn(row) {
       <path d="M21 20l-5.6-5.6a7 7 0 10-1.4 1.4L20 21zM5 10a5 5 0 1110 0A5 5 0 015 10z"/>
     </svg>
   `;
-     
   btn.innerHTML = filterIcon;
   btn.style.cssText = `
     position:absolute;top:1.5px;left:48px;
@@ -6934,7 +7100,6 @@ const enemies = users
       u.dong_mon === "0";
     return lienMinh && dongMon;
   })
-  
   .map(u => {
     // LẤY TÊN TÔNG
     let tongName = "";
@@ -6950,7 +7115,6 @@ const enemies = users
       const match = u.time_spent.match(/\d+/);
       minutes = match ? parseInt(match[0]) : 9999;
     }
-    
     return {
       ...u,
       tongName,
@@ -6995,7 +7159,7 @@ async function buyAttackTurn() {
     throw new Error("❌ Chưa lấy được nonce / token");
   }
   const fd = new FormData();
-  fd.append("action", "refresh_attack_count");
+  fd.append("action", resolveAction("kmRefresh", "refresh_attack_count"));
   fd.append("nonce", KM_SEC.refresh_nonce);
   fd.append("security_token", KM_SEC.token);
   const res = await fetch(API_URL, {
@@ -7017,7 +7181,6 @@ window.buyAttackTurn = buyAttackTurn;
   const match = link.getAttribute("href").match(/\/profile\/(\d+)/);
   return match ? parseInt(match[1]) : null;
 }
-        
 function showEnemyPopup(list) {
   document.getElementById("ak-enemy-popup")?.remove();
   const overlay = document.createElement("div");
@@ -7047,7 +7210,6 @@ function showEnemyPopup(list) {
       background:#1c1c1c;border-radius:8px;
       cursor:pointer;transition:0.2s;
     `;
-           
 row.innerHTML = `
   <div style="color:#888;font-size:12px;width:25px">
     ${index + 1}
@@ -7075,7 +7237,6 @@ row.querySelectorAll("a").forEach(a => {
     e.stopPropagation();
   });
 });
-
     row.onclick = () => {
       if (selected.has(user.id)) {
         selected.delete(user.id);
@@ -7143,12 +7304,10 @@ if (selectedIds.length >= 2) {
       }
       await new Promise(r => setTimeout(r, 200));
     }
-           
     attackBtn.textContent = "Xong";
     attackBtn.disabled = false;
     setTimeout(() => overlay.remove(), 400);
   };
-  
   box.appendChild(attackBtn);
   overlay.appendChild(box);
   overlay.onclick = e => {
@@ -7158,60 +7317,94 @@ if (selectedIds.length >= 2) {
 }
 (function hookMineXHRSmartLogic() {
   let latestUsers = [];
+
+  const KM_CACHE = {
+    kmUsers: null
+  };
+
   const originalOpen = XMLHttpRequest.prototype.open;
   const originalSend = XMLHttpRequest.prototype.send;
+
   XMLHttpRequest.prototype.open = function(method, url) {
     this._url = url;
     return originalOpen.apply(this, arguments);
   };
-                     
+
   XMLHttpRequest.prototype.send = function(body) {
     this.addEventListener("load", function() {
       try {
         if (!this._url || !this._url.includes("hh3d-ajax.php")) return;
+
         let action = null;
-        if (body instanceof FormData) {
-          action = body.get("action");
-        } else if (typeof body === "string") {
+
+        if (typeof body === "string") {
           const params = new URLSearchParams(body);
           action = params.get("action");
         }
-        if (action !== "get_users_in_mine") return;
+
+        if (!action) return;
+
+        // 🔥 AUTO LEARN ACTION (chỉ cần chạy 1 lần)
+        if (!KM_CACHE.kmUsers) {
+          console.log("🧠 Learn action:", action);
+          KM_CACHE.kmUsers = action;
+        }
+
+        // ✅ dùng action đã học
+        if (action !== KM_CACHE.kmUsers) return;
+
         const json = JSON.parse(this.responseText);
         if (!json?.data?.users) return;
+
+        console.log("✅ USERS:", json.data.users);
+
         latestUsers = json.data.users;
+
         setTimeout(applySmartLogic, 300);
+
       } catch (e) {
+        console.error("Hook lỗi:", e);
       }
     });
+
     return originalSend.apply(this, arguments);
   };
+
   function applySmartLogic() {
     if (!latestUsers.length) return;
+
     const activeUser = latestUsers.find(u =>
       u.time_spent && u.time_spent.includes("phút")
     );
-    if (!activeUser) {
-      return;
-    }
+    if (!activeUser) return;
+
     const entered = Number(activeUser.entered_at);
     const shownMinutes = parseInt(activeUser.time_spent);
     if (!entered || isNaN(shownMinutes)) return;
+
     const localNow = Math.floor(Date.now() / 1000);
     const serverNow = entered + (shownMinutes * 60);
     const offset = serverNow - localNow;
+
     latestUsers.forEach(user => {
       if (user.time_spent !== "Đạt tối đa") return;
+
       const enteredAt = Number(user.entered_at);
       if (!enteredAt) return;
+
       let now = Math.floor(Date.now() / 1000) + offset;
       let diff = now - enteredAt;
+
       if (diff < 0) diff = 0;
+
       const minutes = Math.floor(diff / 60);
-      //tính ra <= 0 giữ nguyên
       if (minutes <= 0) return;
+
       updateDOM(user.id, minutes);
-    });}
+    });
+  }
+
+
   function updateDOM(userId, minutes) {
     const row = document.querySelector(`.user-row[data-user-id="${userId}"]`);
     if (!row) return;
@@ -7223,7 +7416,8 @@ if (selectedIds.length >= 2) {
   }); observer.observe(document.body, {
     childList: true,subtree: true
   });
-(function enableAvatarProfileClick(){
+
+  (function enableAvatarProfileClick(){
   document.addEventListener("click", function(e){
     const avatarBox = e.target.closest(".avatar-km, img.avatar-50px");
     if(!avatarBox) return;
@@ -7237,6 +7431,7 @@ if (selectedIds.length >= 2) {
     const url = buildUrl(`/profile/${userId}`);
     window.location.href = url;
   }, true);
+  })();
   (function () {
 
 const CURRENT_VERSION = GM_info.script.version;
@@ -7338,31 +7533,14 @@ console.log("Tu Vi bản thân:",MY_TUVI);
 }
 
 
-// ===== LOAD DATA =====
 function loadData(){
-
-GM_xmlhttpRequest({
-
-method:"GET",
-url:DATA_URL,
-
-onload:function(res){
-
-   
-try{
-
-TUVI_DATA = JSON.parse(res.responseText);
-
-}catch(e){
-
-console.log("Lỗi đọc data.json");
-
-}
-
-}
-
-});
-
+  fetch(DATA_URL)
+    .then(res => res.json())
+    .then(data => {
+      TUVI_DATA = data;
+      console.log("Load data OK");
+    })
+    .catch(err => console.log("Lỗi load data", err));
 }
 
 
@@ -7461,5 +7639,5 @@ setInterval(inject,1000);
 })();
 })();
 })();
-})();
+
 })();
