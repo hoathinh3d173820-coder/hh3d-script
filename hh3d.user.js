@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.3
+// @version      1.4
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -4285,70 +4285,216 @@ async function dailyCheckIn() {
         showToast("❌ Lỗi kết nối Điểm Danh");
     }
 }
-// ===== API SHOP & URL HOANG VỰC =====
-const SHOP_API = buildUrl("/wp-content/themes/halimmovies-child/hh3d-ajax.php");
-const HOANG_VUC = buildUrl("/hoang-vuc");
-const shopNoncePatterns = [
-  {
-    name: "purchase_item_shop_boss",
-    regex: /action\s*:\s*['"]purchase_item_shop_boss['"][\s\S]*?nonce\s*:\s*['"]([A-Za-z0-9\-_]{6,80})['"]/i
-  }
-];
-async function getShopNonce() {
-  try {
-    const resp = await fetch(HOANG_VUC, { credentials: "include" });
-    const html = await resp.text();
-    for (const pat of shopNoncePatterns) {
-      const m = html.match(pat.regex);
-      if (m) {
-        return m[1];
+    function getPageData() {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+
+    script.textContent = `
+      (function() {
+        const data = {
+          action: window.hh3dData?.act?.bossBuy || null,
+          nonce: window.ajax_boss_nonce || null
+        };
+        window.postMessage({ type: "HH3D_SHOP_DATA", data }, "*");
+      })();
+    `;
+
+    window.addEventListener("message", function handler(e) {
+      if (e.data?.type === "HH3D_SHOP_DATA") {
+        window.removeEventListener("message", handler);
+        resolve(e.data.data);
       }
-    }
-  } catch (e) {
+    });
+
+    document.documentElement.appendChild(script);
+    script.remove();
+  });
+}
+// ===== API SHOP =====
+const SHOP_API = buildUrl("/wp-content/themes/halimmovies-child/hh3d-ajax.php");
+
+// ===== LẤY ACTION + NONCE (DEBUG) =====
+async function getShopData() {
+  console.log("===== [SHOP DEBUG FIX CONTEXT] =====");
+
+  const data = await getPageData();
+
+  console.log("DATA từ page:", data);
+
+  if (!data?.action) console.warn("❌ Không có action");
+  if (!data?.nonce) console.warn("❌ Không có nonce");
+
+  if (data?.action && data?.nonce) {
+    localStorage.setItem("bossBuy_action", data.action);
+    localStorage.setItem("bossBuy_nonce", data.nonce);
+
+    console.log("✅ Lấy thành công từ page");
+    return data;
   }
+
+  // fallback
+  const savedAction = localStorage.getItem("bossBuy_action");
+  const savedNonce = localStorage.getItem("bossBuy_nonce");
+
+  console.log("Fallback:", savedAction, savedNonce);
+
+  if (savedAction && savedNonce) {
+    console.log("⚡ Dùng localStorage");
+    return {
+      action: savedAction,
+      nonce: savedNonce
+    };
+  }
+
+  console.log("❌ FAIL toàn bộ");
   return null;
 }
 // ===== HÀM MUA RƯƠNG LINH BẢO =====
 async function buyRuongLB() {
   try {
-    let nonce = await getShopNonce();
-    if (!nonce) {
-      showToast("❌ Không tìm thấy nonce từ Hoang Vực");
+    let shopData = await getShopData(); // ✅ FIX Ở ĐÂY
+
+    if (!shopData) {
+      showToast("❌ Không lấy được action + nonce");
       return;
     }
+
+    console.log("🚀 Gửi request với:", shopData);
+
     let payload = new URLSearchParams({
-      action: "purchase_item_shop_boss",
+      action: shopData.action,
       item_id: "ruong_linh_bao",
       item_type: "tinh_thach",
       quantity: "5",
-      nonce: nonce
+      nonce: shopData.nonce
     });
-  let resp = await fetch(SHOP_API, {
-  method: "POST",
-  headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-  body: payload,
-  credentials: "include"
-});
-let data = await resp.json();
-if (data.success) {
-  const msg =
-    data?.data?.message ||
-    data?.message ||
-    (data?.data?.item_name
-      ? `Mua thành công ${data?.data?.quantity || 1} ${data.data.item_name}`
-      : "Mua thành công!");
-  showToast(`✅ ${msg}`);
-} else {
-  const err =
-    (typeof data?.data === "string" ? data.data : data?.data?.message) ||
-    data?.message ||
-    "không rõ";
-  showToast(`❌ Lỗi mua: ${err}`);
+
+    let resp = await fetch(SHOP_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+      },
+      body: payload,
+      credentials: "include"
+    });
+
+    let data = await resp.json();
+
+    console.log("📦 RESPONSE:", data);
+
+    if (data.success) {
+      const msg =
+        data?.data?.message ||
+        data?.message ||
+        (data?.data?.item_name
+          ? `Mua thành công ${data?.data?.quantity || 1} ${data.data.item_name}`
+          : "Mua thành công!");
+
+      showToast(`✅ ${msg}`);
+    } else {
+      const err =
+        (typeof data?.data === "string" ? data.data : data?.data?.message) ||
+        data?.message ||
+        "không rõ";
+
+      showToast(`❌ Lỗi mua: ${err}`);
+    }
+
+  } catch (e) {
+    console.error("❌ Lỗi fetch:", e);
+    showToast("❌ Lỗi kết nối khi mua pháp bảo");
+  }
 }
-} catch (e) {
-  showToast("❌ Lỗi kết nối khi mua pháp bảo");
-}
-}
+// ===== AUTO CLICK NHẬN LƯỢT (GIỚI HẠN 3 LẦN / NGÀY) =====
+(function () {
+  const MAX_PER_DAY = 3;
+  const KEY_COUNT = "claimTurns_count";
+  const KEY_DATE = "claimTurns_date";
+  function getToday() {
+    const d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+  }
+  function checkReset() {
+    const today = getToday();
+    const savedDate = localStorage.getItem(KEY_DATE);
+    if (savedDate !== today) {
+      console.log("🔄 Sang ngày mới → reset lượt");
+      localStorage.setItem(KEY_DATE, today);
+      localStorage.setItem(KEY_COUNT, "0");
+    }
+  }
+  function getCount() {
+    return parseInt(localStorage.getItem(KEY_COUNT) || "0");
+  }
+  function increaseCount() {
+    let count = getCount() + 1;
+    localStorage.setItem(KEY_COUNT, count);
+    console.log("📊 Đã click:", count, "/", MAX_PER_DAY);
+  }
+  function autoClick() {
+    checkReset();
+    let count = getCount();
+    if (count >= MAX_PER_DAY) {
+      console.log("⛔ Đã đạt giới hạn 3 lần hôm nay");
+      return;
+    }
+    const btn = document.querySelector("#btnClaimTurns");
+    if (btn) {
+      btn.click();
+      increaseCount();
+    } else {
+      setTimeout(autoClick, 1000);
+    }
+  }
+  window.addEventListener("load", () => {
+    setTimeout(autoClick, 1500);
+  });
+})();
+    // ===== AUTO CLICK RƯƠNG LINH BẢO (3 LẦN / NGÀY) =====
+(function () {
+  const MAX_PER_DAY = 3;
+  const KEY_COUNT = "ruongLB_count";
+  const KEY_DATE = "ruongLB_date";
+  function getToday() {
+    const d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+  }
+  function checkReset() {
+    const today = getToday();
+    const savedDate = localStorage.getItem(KEY_DATE);
+    if (savedDate !== today) {
+      console.log("🔄 [RƯƠNG] Sang ngày mới → reset");
+      localStorage.setItem(KEY_DATE, today);
+      localStorage.setItem(KEY_COUNT, "0");
+    }
+  }
+  function getCount() {
+    return parseInt(localStorage.getItem(KEY_COUNT) || "0");
+  }
+  function increaseCount() {
+    let count = getCount() + 1;
+    localStorage.setItem(KEY_COUNT, count);
+  }
+  function autoClickRuong() {
+    checkReset();
+    let count = getCount();
+    if (count >= MAX_PER_DAY) {
+      console.log("⛔ [RƯƠNG] Đã đạt giới hạn hôm nay");
+      return;
+    }
+    const btn = document.querySelector("#btnRuongLB");
+    if (btn) {
+      btn.click();
+      increaseCount();
+    } else {
+      setTimeout(autoClickRuong, 1000);
+    }
+  }
+  window.addEventListener("load", () => {
+    setTimeout(autoClickRuong, 2000);
+  });
+
+})();
 // ===== BIẾN CHUNG =====
 let autoPhucLoiTimer = null;
 let iframe = null;
@@ -6234,7 +6380,7 @@ async function claimActivityReward(stage) {
 }
 async function claimAllActivityRewards() {
     await claimActivityReward("stage1");
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 5000));
     await claimActivityReward("stage2");
 }
 async function giftFlowerOnce(friendId) {
@@ -6382,6 +6528,39 @@ async function getBHDProgress(){
     });
 
     /* ===============================
+       🔥 NEW: TIÊN DUYÊN (TẶNG HOA)
+    ================================ */
+    let tienDuyenPercent = 0;
+
+    const rows = doc.querySelectorAll(".nv-row");
+    rows.forEach(row=>{
+      const label = row.querySelector(".nv-row-lbl")?.innerText.trim();
+      if(label === "Tiên Duyên - Tặng Hoa"){
+        const valText = row.querySelector(".nv-row-val")?.innerText || "0";
+        const value = parseInt(valText.replace(/[^\d-]/g,'')) || 0;
+
+        const progressVal = Math.abs(value); // âm -> dương
+        tienDuyenPercent = Math.min((progressVal / 300) * 100, 100);
+      }
+    });
+/* ===============================
+   🔥 NEW: CHECK RƯƠNG HOẠT ĐỘNG
+================================ */
+const chests = doc.querySelectorAll(".nv-chest");
+
+const chestStatus = [];
+
+chests.forEach((chest, index) => {
+  const src = chest.getAttribute("src") || "";
+
+  let status = "❌ Chưa mở";
+  if(src.includes("open")){
+    status = "✅ Đã mở";
+  }
+
+  chestStatus.push(`Rương ${index+1}: ${status}`);
+});
+    /* ===============================
        2️⃣ LẤY RING TỔNG %
     ================================ */
     const totalPercent = doc.querySelector(".nv-ring-label")?.innerText.trim() || "0%";
@@ -6411,7 +6590,7 @@ async function getBHDProgress(){
       <div style="background:#1b1b1b;border:1px solid #2a2a2a;border-radius:8px;padding:6px 8px;">
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
           <span>${label}</span>
-          <b style="color:${color}">${value}%</b>
+          <b style="color:${color}">${Math.floor(value)}%</b>
         </div>
         <div style="height:6px;background:${bg};border-radius:4px;overflow:hidden;">
           <div style="width:${Math.min(value,100)}%;height:100%;background:${color};transition:.3s;"></div>
@@ -6440,6 +6619,10 @@ async function getBHDProgress(){
       .map(k=>renderRow(k, progress[k] || 0))
       .join("");
 
+    /* ===============================
+       🔥 NEW: THÊM TIÊN DUYÊN VÀO UI
+    ================================ */
+    const tienDuyenHtml = renderRow("Tiên Duyên (Tặng Hoa)", tienDuyenPercent);
 
     /* ===============================
        6️⃣ TOAST UI
@@ -6456,13 +6639,21 @@ async function getBHDProgress(){
       box-shadow:0 10px 28px rgba(0,0,0,.45);
       font-size:12px;
     ">
-      
+
       <div style="font-size:15px;font-weight:700;margin-bottom:8px;">
         📊 Tiến Độ Ngày (${totalPercent})
       </div>
 
       <div style="display:grid;gap:6px;margin-bottom:10px;">
         ${progressHtml}
+      </div>
+
+      <!-- 🔥 TIÊN DUYÊN -->
+      <div style="margin-bottom:10px;">
+        ${tienDuyenHtml}
+        <div style="margin-top:6px;font-size:12px;display:grid;gap:2px;">
+  ${chestStatus.map(s=>`<div>🎁 ${s}</div>`).join("")}
+</div>
       </div>
 
       <div style="height:1px;background:#2a2a2a;margin:8px 0;"></div>
