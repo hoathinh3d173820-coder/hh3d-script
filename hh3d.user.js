@@ -7607,7 +7607,6 @@ if (selectedIds.length >= 2) {
   }); observer.observe(document.body, {
     childList: true,subtree: true
   });
-
   (function enableAvatarProfileClick(){
   document.addEventListener("click", function(e){
     const avatarBox = e.target.closest(".avatar-km, img.avatar-50px");
