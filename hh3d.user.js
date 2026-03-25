@@ -4478,96 +4478,8 @@ async function buyRuongLB() {
     showToast("❌ Lỗi kết nối");
   }
 }
-// ===== AUTO CLICK NHẬN LƯỢT (GIỚI HẠN 3 LẦN / NGÀY) =====
-(function () {
-  const MAX_PER_DAY = 3;
-  const KEY_COUNT = "claimTurns_count";
-  const KEY_DATE = "claimTurns_date";
-  function getToday() {
-    const d = new Date();
-    return d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-  }
-  function checkReset() {
-    const today = getToday();
-    const savedDate = localStorage.getItem(KEY_DATE);
-    if (savedDate !== today) {
-      console.log("🔄 Sang ngày mới → reset lượt");
-      localStorage.setItem(KEY_DATE, today);
-      localStorage.setItem(KEY_COUNT, "0");
-    }
-  }
-  function getCount() {
-    return parseInt(localStorage.getItem(KEY_COUNT) || "0");
-  }
-  function increaseCount() {
-    let count = getCount() + 1;
-    localStorage.setItem(KEY_COUNT, count);
-    console.log("📊 Đã click:", count, "/", MAX_PER_DAY);
-  }
-  function autoClick() {
-    checkReset();
-    let count = getCount();
-    if (count >= MAX_PER_DAY) {
-      console.log("⛔ Đã đạt giới hạn 3 lần hôm nay");
-      return;
-    }
-    const btn = document.querySelector("#btnClaimTurns");
-    if (btn) {
-      btn.click();
-      increaseCount();
-    } else {
-      setTimeout(autoClick, 1000);
-    }
-  }
-  window.addEventListener("load", () => {
-    setTimeout(autoClick, 1500);
-  });
-})();
-    // ===== AUTO CLICK RƯƠNG LINH BẢO (3 LẦN / NGÀY) =====
-(function () {
-  const MAX_PER_DAY = 3;
-  const KEY_COUNT = "ruongLB_count";
-  const KEY_DATE = "ruongLB_date";
-  function getToday() {
-    const d = new Date();
-    return d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-  }
-  function checkReset() {
-    const today = getToday();
-    const savedDate = localStorage.getItem(KEY_DATE);
-    if (savedDate !== today) {
-      console.log("🔄 [RƯƠNG] Sang ngày mới → reset");
-      localStorage.setItem(KEY_DATE, today);
-      localStorage.setItem(KEY_COUNT, "0");
-    }
-  }
-  function getCount() {
-    return parseInt(localStorage.getItem(KEY_COUNT) || "0");
-  }
-  function increaseCount() {
-    let count = getCount() + 1;
-    localStorage.setItem(KEY_COUNT, count);
-  }
-  function autoClickRuong() {
-    checkReset();
-    let count = getCount();
-    if (count >= MAX_PER_DAY) {
-      console.log("⛔ [RƯƠNG] Đã đạt giới hạn hôm nay");
-      return;
-    }
-    const btn = document.querySelector("#btnRuongLB");
-    if (btn) {
-      btn.click();
-      increaseCount();
-    } else {
-      setTimeout(autoClickRuong, 1000);
-    }
-  }
-  window.addEventListener("load", () => {
-    setTimeout(autoClickRuong, 2000);
-  });
 
-})();
+    
 // ===== BIẾN CHUNG =====
 let autoPhucLoiTimer = null;
 let iframe = null;
@@ -6918,6 +6830,7 @@ async function showFriendPicker() {
         ${f.display_name}
       </label>`;
 
+    
     row.querySelector("input").onchange = (e) => {
       if (e.target.checked) {
         if (!selected.includes(f.user_id)) selected.push(f.user_id);
@@ -6971,6 +6884,7 @@ async function autoGiftFlower() {
   }
 }
 
+
 async function autoWish() {
   const settings = loadSettings();
   if (!settings.autoWish) return;
@@ -7002,6 +6916,7 @@ async function runAuto() {
   autoTurns();
   autoRuong();
 
+      
   markAutoRan();
 }
 
@@ -7100,6 +7015,7 @@ waitForGameReady();
             if (text.includes('"users"') && text.includes('"attacks_left"')) {
                 const json = JSON.parse(text);
 
+          
                 if (json?.success && json?.data?.users) {
                     console.log('[HH3D] FETCH mine data');
                     handleMineData(json.data);
@@ -7230,6 +7146,7 @@ ensureButton();
 }.flag-default,.flag-item-6,.flag-item-7 { display: none !important; }[class^="tong-cap-"] {display: none !important; } }`;
     document.head.appendChild(style);
   }
+      
   function removeFixStyle() {
     const s = document.getElementById(STYLE_ID);
     if (s) s.remove();
@@ -7367,6 +7284,7 @@ if (mMine?.[1]) {
           if (mineId) {
             KM_STATE.currentMineId = Number(mineId);
           }
+    
         }
       }
     } catch (e) {
@@ -7503,6 +7421,7 @@ function createFastAttackBtn(row) {
 
   row.appendChild(btn);
 }
+      
   function scanAndAttach() {
     const rows = document.querySelectorAll(".user-row, .user-item, [data-user-id]");
     rows.forEach(createFastAttackBtn);
@@ -7889,6 +7808,7 @@ if (selectedIds.length >= 2) {
         const json = JSON.parse(this.responseText);
         if (!json?.data?.users) return;
 
+                                   
         console.log("✅ USERS:", json.data.users);
 
         latestUsers = json.data.users;
@@ -8158,6 +8078,7 @@ div.innerText="✨ "+Number(tuvi).toLocaleString()+" ("+rate+"%)";
 name.after(div);
 row.dataset.tuviInjected=true;
 });
+
 
   
 } 
