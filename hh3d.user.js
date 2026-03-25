@@ -6664,7 +6664,7 @@ toggleBC.onchange = () => {const on = toggleBC.checked;localStorage.setItem("biC
 toggleTD.onchange=()=>{const on=toggleTD.checked;localStorage.setItem("tienDoToggle",on?"on":"off");if(on)getBHDProgress()};
 togglePL.onchange=()=>{const on=togglePL.checked;localStorage.setItem("phucloiToggle",on?"on":"off");if(on)autoPhucLoiHidden();else{localStorage.removeItem("nextRun_PL");if(typeof stopAutoPhucLoiHidden==="function")stopAutoPhucLoiHidden()}};
 toggleHV.onchange=()=>{const on=toggleHV.checked;localStorage.setItem("hoangvucToggle",on?"on":"off");if(on)autoHoangVucHidden();else{if(typeof stopAutoHoangVucHidden==="function")stopAutoHoangVucHidden();showToast("🛑 Auto Hoang Vực đã tắt.","error")}};
-// HIỆN THÔNG TIN MỎ (FIX FULL)
+// HIỆN THÔNG TIN MỎ =
 // ===== CONFIG =====
 const AUTO_KEY = "HH3D_AUTO_SETTINGS";
 const AUTO_RUN_KEY = "HH3D_AUTO_LAST_RUN";
@@ -6677,34 +6677,30 @@ function saveSettings(data) {
   localStorage.setItem(AUTO_KEY, JSON.stringify(data));
 }
 
-// ===== CHECK NGÀY =====
+// ===== LẤY NGÀY LOCAL (FIX TIMEZONE) =====
 function getToday() {
-  return new Date().toISOString().slice(0, 10); // yyyy-mm-dd
+  const d = new Date();
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
 }
 
+// ===== CHECK ĐÃ CHẠY HÔM NAY CHƯA =====
 function isAutoRanToday() {
-  return localStorage.getItem(AUTO_RUN_KEY) === getToday();
+  const last = localStorage.getItem(AUTO_RUN_KEY);
+  const today = getToday();
+
+  // nếu khác ngày → coi như chưa chạy (auto reset luôn)
+  if (last !== today) {
+    return false;
+  }
+
+  return true;
 }
 
+// ===== ĐÁNH DẤU ĐÃ CHẠY =====
 function markAutoRan() {
   localStorage.setItem(AUTO_RUN_KEY, getToday());
-}
-
-// ===== AUTO RESET 00:00 =====
-function scheduleResetAtMidnight() {
-  const now = new Date();
-  const next = new Date();
-  next.setHours(24, 0, 0, 0); // 00:00 hôm sau
-
-  const delay = next - now;
-
-  setTimeout(() => {
-    localStorage.removeItem(AUTO_RUN_KEY);
-    console.log("♻ Reset AUTO ngày mới");
-
-    // lặp lại mỗi ngày
-    scheduleResetAtMidnight();
-  }, delay);
 }
 
 // ===== UI MENU =====
@@ -6866,6 +6862,10 @@ saveBtn.style.cssText = `
 }
 
 // ===== AUTO =====
+    function autoRuong() {
+  if (!loadSettings().autoRuong) return;
+  document.querySelector("#btnRuongLB")?.click();
+}
 async function autoGiftFlower() {
   const settings = loadSettings();
   if (!settings.autoFlower) return;
@@ -6896,10 +6896,7 @@ function autoTurns() {
   document.querySelector("#btnClaimTurns")?.click();
 }
 
-function autoRuong() {
-  if (!loadSettings().autoRuong) return;
-  document.querySelector("#btnRuongLB")?.click();
-}
+
 
 // ===== RUN AUTO =====
 async function runAuto() {
@@ -6924,7 +6921,7 @@ function initAuto() {
   console.log("🚀 INIT AUTO");
 
   setTimeout(runAuto, 3000);
-  scheduleResetAtMidnight();
+
 }
 
 function waitForGameReady() {
