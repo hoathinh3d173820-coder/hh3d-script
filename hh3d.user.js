@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.4
+// @version      1.5
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -1281,8 +1281,34 @@ const menu=document.createElement("div");
 menu.id="autoMenu";
 menu.style.cssText="position:fixed;top:60px;right:20px;z-index:99999;background:rgba(25,25,25,.95);padding:10px;border-radius:8px;width:220px;font-family:'Segoe UI',sans-serif;color:#eee;box-shadow:0 0 10px rgba(0,0,0,.5);backdrop-filter:blur(4px)";
 menu.innerHTML =
-`<div style="text-align:center;margin-bottom:8px">
-  <img src="${buildUrl("/wp-content/uploads/2025/05/logo.png")}" style="max-width:130px;border-radius:6px">
+`<div style="position:relative;text-align:center;margin-bottom:8px">
+
+  <!-- ⚙  -->
+  <button id="openAutoMenuBtn"
+    style="
+      position:absolute;
+      top:6px;
+      left:6px;
+      width:28px;
+      height:28px;
+      border-radius:6px;
+      border:none;
+      background:rgba(0,0,0,0.6);
+      color:#fff;
+      cursor:pointer;
+      font-size:14px;
+      backdrop-filter:blur(4px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    ">
+    ⚙
+  </button>
+
+  <!-- LOGO -->
+  <img src="${buildUrl("/wp-content/uploads/2025/05/logo.png")}"
+       style="max-width:130px;border-radius:6px">
+
 </div>
 
 <div id="autoProfileInfo" style="margin:8px 0;padding:6px;background:#333;border-radius:6px;font-size:13px;line-height:1.4em">
@@ -1337,6 +1363,12 @@ ${
 `;
 
 document.body.appendChild(menu);
+    document.getElementById("openAutoMenuBtn")?.addEventListener("click", () => {
+  // tránh mở nhiều lần
+  if (document.getElementById("autoMenuBox")) return;
+
+  createAutoMenu();
+});
 document.getElementById("autoLoginSettingBtn")
   ?.addEventListener("click", openKhoangMenu);
 
@@ -4285,83 +4317,124 @@ async function dailyCheckIn() {
         showToast("❌ Lỗi kết nối Điểm Danh");
     }
 }
-    function getPageData() {
+ // ===== API SHOP =====
+const SHOP_API = buildUrl("/wp-content/themes/halimmovies-child/hh3d-ajax.php");
+
+// ===== LẤY DATA TỪ PAGE =====
+function getPageData() {
   return new Promise((resolve) => {
     const script = document.createElement("script");
 
     script.textContent = `
       (function() {
-        const data = {
-          action: window.hh3dData?.act?.bossBuy || null,
-          nonce: window.ajax_boss_nonce || null
-        };
-        window.postMessage({ type: "HH3D_SHOP_DATA", data }, "*");
+        window.postMessage({
+          type: "HH3D_SHOP_DATA",
+          data: {
+            action: window.hh3dData?.act?.bossBuy || null,
+            nonce: window.ajax_boss_nonce || null
+          }
+        }, "*");
       })();
     `;
 
-    window.addEventListener("message", function handler(e) {
+    const handler = (e) => {
       if (e.data?.type === "HH3D_SHOP_DATA") {
         window.removeEventListener("message", handler);
         resolve(e.data.data);
       }
-    });
+    };
+
+    window.addEventListener("message", handler);
 
     document.documentElement.appendChild(script);
     script.remove();
   });
 }
-// ===== API SHOP =====
-const SHOP_API = buildUrl("/wp-content/themes/halimmovies-child/hh3d-ajax.php");
 
-// ===== LẤY ACTION + NONCE (DEBUG) =====
-async function getShopData() {
-  console.log("===== [SHOP DEBUG FIX CONTEXT] =====");
+// ===== FETCH NONCE (fallback) =====
+async function fetchNonce() {
+  try {
+    console.log("🌐 Fetch Hoang Vực lấy nonce...");
 
-  const data = await getPageData();
+    const res = await fetch("/hoang-vuc", {
+      credentials: "include"
+    });
 
-  console.log("DATA từ page:", data);
+    const html = await res.text();
 
-  if (!data?.action) console.warn("❌ Không có action");
-  if (!data?.nonce) console.warn("❌ Không có nonce");
+    const match =
+      html.match(/ajax_boss_nonce\s*=\s*["'](.*?)["']/) ||
+      html.match(/"ajax_boss_nonce"\s*:\s*"(.*?)"/);
 
-  if (data?.action && data?.nonce) {
-    localStorage.setItem("bossBuy_action", data.action);
-    localStorage.setItem("bossBuy_nonce", data.nonce);
+    const nonce = match?.[1] || null;
 
-    console.log("✅ Lấy thành công từ page");
-    return data;
+    console.log("🎯 Nonce fetch:", nonce);
+
+    if (nonce) {
+      localStorage.setItem("bossBuy_nonce", nonce);
+    }
+
+    return nonce;
+
+  } catch (err) {
+    console.error("❌ Fetch nonce lỗi:", err);
+    return null;
   }
-
-  // fallback
-  const savedAction = localStorage.getItem("bossBuy_action");
-  const savedNonce = localStorage.getItem("bossBuy_nonce");
-
-  console.log("Fallback:", savedAction, savedNonce);
-
-  if (savedAction && savedNonce) {
-    console.log("⚡ Dùng localStorage");
-    return {
-      action: savedAction,
-      nonce: savedNonce
-    };
-  }
-
-  console.log("❌ FAIL toàn bộ");
-  return null;
 }
-// ===== HÀM MUA RƯƠNG LINH BẢO =====
+
+// ===== LẤY ACTION + NONCE =====
+async function getShopData() {
+  console.log("===== [SHOP FINAL] =====");
+
+  const pageData = await getPageData();
+
+  let action = pageData?.action || null;
+  let nonce = pageData?.nonce || null;
+
+  // ✅ Ưu tiên data trực tiếp từ page
+  if (action && nonce) {
+    console.log("✅ Lấy trực tiếp từ page");
+    localStorage.setItem("bossBuy_nonce", nonce);
+    return { action, nonce };
+  }
+
+  if (!action) {
+    console.warn("❌ Không có action");
+    return null;
+  }
+
+  // ✅ fallback: lấy nonce từ cache
+  nonce = localStorage.getItem("bossBuy_nonce");
+
+  if (nonce) {
+    console.log("⚡ Dùng nonce cache");
+    return { action, nonce };
+  }
+
+  // ✅ fallback cuối: fetch
+  nonce = await fetchNonce();
+
+  if (!nonce) {
+    console.warn("❌ Không lấy được nonce");
+    return null;
+  }
+
+  return { action, nonce };
+}
+
+// ===== HÀM MUA =====
 async function buyRuongLB() {
   try {
-    let shopData = await getShopData(); // ✅ FIX Ở ĐÂY
+    const shopData = await getShopData();
 
     if (!shopData) {
       showToast("❌ Không lấy được action + nonce");
       return;
     }
 
-    console.log("🚀 Gửi request với:", shopData);
+    console.log("🚀 Gửi request:", shopData);
 
-    let payload = new URLSearchParams({
+    const payload = new URLSearchParams({
       action: shopData.action,
       item_id: "ruong_linh_bao",
       item_type: "tinh_thach",
@@ -4369,7 +4442,7 @@ async function buyRuongLB() {
       nonce: shopData.nonce
     });
 
-    let resp = await fetch(SHOP_API, {
+    const resp = await fetch(SHOP_API, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
@@ -4378,7 +4451,7 @@ async function buyRuongLB() {
       credentials: "include"
     });
 
-    let data = await resp.json();
+    const data = await resp.json();
 
     console.log("📦 RESPONSE:", data);
 
@@ -4401,8 +4474,8 @@ async function buyRuongLB() {
     }
 
   } catch (e) {
-    console.error("❌ Lỗi fetch:", e);
-    showToast("❌ Lỗi kết nối khi mua pháp bảo");
+    console.error("❌ Lỗi:", e);
+    showToast("❌ Lỗi kết nối");
   }
 }
 // ===== AUTO CLICK NHẬN LƯỢT (GIỚI HẠN 3 LẦN / NGÀY) =====
@@ -6680,6 +6753,275 @@ toggleTD.onchange=()=>{const on=toggleTD.checked;localStorage.setItem("tienDoTog
 togglePL.onchange=()=>{const on=togglePL.checked;localStorage.setItem("phucloiToggle",on?"on":"off");if(on)autoPhucLoiHidden();else{localStorage.removeItem("nextRun_PL");if(typeof stopAutoPhucLoiHidden==="function")stopAutoPhucLoiHidden()}};
 toggleHV.onchange=()=>{const on=toggleHV.checked;localStorage.setItem("hoangvucToggle",on?"on":"off");if(on)autoHoangVucHidden();else{if(typeof stopAutoHoangVucHidden==="function")stopAutoHoangVucHidden();showToast("🛑 Auto Hoang Vực đã tắt.","error")}};
 // HIỆN THÔNG TIN MỎ (FIX FULL)
+// ===== CONFIG =====
+const AUTO_KEY = "HH3D_AUTO_SETTINGS";
+const AUTO_RUN_KEY = "HH3D_AUTO_LAST_RUN";
+
+// ===== LOAD / SAVE SETTINGS =====
+function loadSettings() {
+  return JSON.parse(localStorage.getItem(AUTO_KEY) || "{}");
+}
+function saveSettings(data) {
+  localStorage.setItem(AUTO_KEY, JSON.stringify(data));
+}
+
+// ===== CHECK NGÀY =====
+function getToday() {
+  return new Date().toISOString().slice(0, 10); // yyyy-mm-dd
+}
+
+function isAutoRanToday() {
+  return localStorage.getItem(AUTO_RUN_KEY) === getToday();
+}
+
+function markAutoRan() {
+  localStorage.setItem(AUTO_RUN_KEY, getToday());
+}
+
+// ===== AUTO RESET 00:00 =====
+function scheduleResetAtMidnight() {
+  const now = new Date();
+  const next = new Date();
+  next.setHours(24, 0, 0, 0); // 00:00 hôm sau
+
+  const delay = next - now;
+
+  setTimeout(() => {
+    localStorage.removeItem(AUTO_RUN_KEY);
+    console.log("♻ Reset AUTO ngày mới");
+
+    // lặp lại mỗi ngày
+    scheduleResetAtMidnight();
+  }, delay);
+}
+
+// ===== UI MENU =====
+function createAutoMenu() {
+  const box = document.createElement("div");
+  box.id = "autoMenuBox";
+
+  box.style.cssText = `
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    background:#1e1e1e;
+    color:#ddd;
+    padding:12px;
+    border-radius:10px;
+    font-size:13px;
+    z-index:999999;
+    width:220px;
+    box-shadow:0 0 20px rgba(0,0,0,0.8);
+    border:1px solid #444;
+  `;
+
+  const settings = loadSettings();
+  const ran = isAutoRanToday();
+
+box.innerHTML =
+  '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+  '<b style="color:#fff;font-size:14px">⚙ Cài đặt Tự Động</b>' +
+  '<span id="closeAutoMenu" style="cursor:pointer;font-size:14px">✖</span>' +
+  '</div>' +
+
+  `<div style="font-size:12px;color:${ran ? "#4caf50" : "#aaa"};margin-bottom:8px;text-align:center;">
+    ${ran ? "✅ Đã chạy hôm nay" : "⏳ Chưa chạy"}
+  </div>` +
+
+  // checkbox đẹp hơn
+  '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">' +
+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+    '<input type="checkbox" id="autoFlower"> 🌹 Tặng hoa</label>' +
+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+    '<input type="checkbox" id="autoWish"> 🌸 Ước nguyện</label>' +
+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+    '<input type="checkbox" id="autoTurns"> 🎟 Nhận lượt Khắc</label>' +
+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+    '<input type="checkbox" id="autoRuong"> Mua Rương LB</label>' +
+
+  '</div>' +
+
+  // nút chọn bạn
+  '<button id="btnPickFriends" style="margin-top:4px;width:100%;padding:6px;background:#3a3a3a;color:#fff;border:none;border-radius:6px;cursor:pointer;">👥 Chọn bạn</button>' +
+
+  // nút reset đẹp hơn
+  '<button id="resetAutoRun" style="margin-top:6px;width:100%;padding:6px;background:#8b2c2c;color:#fff;border:none;border-radius:6px;cursor:pointer;">♻ Reset </button>';
+
+  document.body.appendChild(box);
+
+  // set checkbox
+  ["autoFlower","autoWish","autoTurns","autoRuong"].forEach(id=>{
+    const el = box.querySelector("#"+id);
+    if (!el) return;
+    el.checked = settings[id] || false;
+    el.onchange = () => {
+      settings[id] = el.checked;
+      saveSettings(settings);
+    };
+  });
+
+  // đóng
+  box.querySelector("#closeAutoMenu").onclick = () => box.remove();
+
+  // chọn bạn
+  box.querySelector("#btnPickFriends").onclick = () => {
+    box.remove();
+    showFriendPicker();
+  };
+
+  // reset
+  box.querySelector("#resetAutoRun").onclick = () => {
+    localStorage.removeItem(AUTO_RUN_KEY);
+    showToast("♻ Đã reset, có thể chạy lại");
+  };
+}
+
+// ===== PICK FRIEND =====
+async function showFriendPicker() {
+  const friends = await getFriendsList();
+  const settings = loadSettings();
+
+  let selected = settings.selectedFriends || [];
+
+  const popup = document.createElement("div");
+
+  popup.style.cssText = `
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    background:#1e1e1e;
+    color:#ddd;
+    padding:10px;
+    border-radius:10px;
+    z-index:999999;
+    max-height:400px;
+    overflow:auto;
+    width:260px;
+  `;
+
+  popup.innerHTML = "<b>Chọn bạn</b><br>";
+
+  friends.forEach(f => {
+    const row = document.createElement("div");
+
+    const checked = selected.includes(f.user_id);
+
+    row.innerHTML =
+      `<label>
+        <input type="checkbox" ${checked ? "checked":""}>
+        ${f.display_name}
+      </label>`;
+
+    row.querySelector("input").onchange = (e) => {
+      if (e.target.checked) {
+        if (!selected.includes(f.user_id)) selected.push(f.user_id);
+      } else {
+        selected = selected.filter(id => id !== f.user_id);
+      }
+    };
+
+    popup.appendChild(row);
+  });
+
+  const saveBtn = document.createElement("button");
+  saveBtn.innerText = "💾 Lưu";
+saveBtn.style.cssText = `
+  margin-top:8px;
+  width:100%;
+  padding:6px;
+  background:#3a3a3a;
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+`;
+
+  saveBtn.onclick = () => {
+    settings.selectedFriends = [...new Set(selected)];
+    saveSettings(settings);
+    popup.remove();
+  };
+
+  popup.appendChild(saveBtn);
+  document.body.appendChild(popup);
+}
+
+// ===== AUTO =====
+async function autoGiftFlower() {
+  const settings = loadSettings();
+  if (!settings.autoFlower) return;
+
+  const ids = settings.selectedFriends || [];
+  if (!ids.length) return;
+
+  const friends = await getFriendsList();
+
+  for (let id of ids) {
+    const f = friends.find(x => x.user_id == id);
+    if (!f) continue;
+
+    await giftFlower3(f);
+    await new Promise(r => setTimeout(r, 1200));
+  }
+}
+
+async function autoWish() {
+  const settings = loadSettings();
+  if (!settings.autoWish) return;
+  await makeWishTree();
+}
+
+function autoTurns() {
+  if (!loadSettings().autoTurns) return;
+  document.querySelector("#btnClaimTurns")?.click();
+}
+
+function autoRuong() {
+  if (!loadSettings().autoRuong) return;
+  document.querySelector("#btnRuongLB")?.click();
+}
+
+// ===== RUN AUTO =====
+async function runAuto() {
+  if (isAutoRanToday()) {
+    console.log("⛔ Đã chạy hôm nay");
+    return;
+  }
+
+  console.log("🚀 AUTO RUN");
+
+  await autoWish();
+  await autoGiftFlower();
+
+  autoTurns();
+  autoRuong();
+
+  markAutoRan();
+}
+
+function initAuto() {
+  console.log("🚀 INIT AUTO");
+
+  setTimeout(runAuto, 3000);
+  scheduleResetAtMidnight();
+}
+
+function waitForGameReady() {
+  const check = setInterval(() => {
+    if (document.body && document.querySelector("body")) {
+      clearInterval(check);
+      initAuto();
+    }
+  }, 1000);
+}
+
+waitForGameReady();
 (function HH3D_MINE_UI_STABLE() {
     let LAST_MINE_DATA = null;
     let BATQUAI_FIXED = false;
@@ -7635,6 +7977,7 @@ const SCRIPT_URL =
 
 async function checkUpdate() {
 
+                              
     try {
 
         const res = await fetch(VERSION_URL);
@@ -7793,9 +8136,9 @@ if(!tuvi) return;
 
 const name=row.querySelector(".user-name");
 
-if(!name) return;
 
-      
+                        
+if(!name) return;  
 
 const rate = calcWinRate(tuvi);
 
@@ -7815,19 +8158,18 @@ div.innerText="✨ "+Number(tuvi).toLocaleString()+" ("+rate+"%)";
 name.after(div);
 row.dataset.tuviInjected=true;
 });
- 
+
+  
 } 
 // ===== RUN =====
 getMyTuvi();
 loadData();
 setInterval(inject,1000);
-
 })();
 })();
 })();
 })();
 })();
 })();
-})();
-
+})();                                             
 })();
