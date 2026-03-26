@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.6
+// @version      1.8
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -6944,7 +6944,7 @@ waitForGameReady();
 
         const bonus_display = document.querySelector('#bonus-display');
         if (!bonus_display) return;
-
+       bonus_display.style.display = 'block'; //FIX CHẶN HIỆN IU
         let enemies = 0, dongMon = 0, lienMinh = 0;
 
         data.users.forEach(u => {
@@ -6999,29 +6999,6 @@ waitForGameReady();
         setTimeout(() => fixBatQuaiOnce(data), 300);
         setTimeout(() => fixBatQuaiOnce(data), 800);
     }
-
-    /**************** FETCH HOOK (QUAN TRỌNG) ****************/
-    const _fetch = window.fetch;
-    window.fetch = async function (...args) {
-        const res = await _fetch.apply(this, args);
-
-        try {
-            const clone = res.clone();
-            const text = await clone.text();
-
-            if (text.includes('"users"') && text.includes('"attacks_left"')) {
-                const json = JSON.parse(text);
-
-          
-                if (json?.success && json?.data?.users) {
-                    console.log('[HH3D] FETCH mine data');
-                    handleMineData(json.data);
-                }
-            }
-        } catch (e) {}
-
-        return res;
-    };
 
     /**************** XHR HOOK ****************/
     const _open = XMLHttpRequest.prototype.open;
@@ -7767,10 +7744,7 @@ if (selectedIds.length >= 2) {
 (function hookMineXHRSmartLogic() {
   let latestUsers = [];
 
-  const KM_CACHE = {
-    kmUsers: null
-  };
-
+  // ===== HOOK XHR =====
   const originalOpen = XMLHttpRequest.prototype.open;
   const originalSend = XMLHttpRequest.prototype.send;
 
@@ -7783,78 +7757,59 @@ if (selectedIds.length >= 2) {
     this.addEventListener("load", function() {
       try {
         if (!this._url || !this._url.includes("hh3d-ajax.php")) return;
-
         let action = null;
-
         if (typeof body === "string") {
-          const params = new URLSearchParams(body);
-          action = params.get("action");
+          action = new URLSearchParams(body).get("action");
+        } else if (body instanceof FormData || body instanceof URLSearchParams) {
+          action = body.get("action");
         }
-
         if (!action) return;
 
-        // 🔥 AUTO LEARN ACTION (chỉ cần chạy 1 lần)
-        if (!KM_CACHE.kmUsers) {
-          console.log("🧠 Learn action:", action);
-          KM_CACHE.kmUsers = action;
-        }
-
-        // ✅ dùng action đã học
-        if (action !== KM_CACHE.kmUsers) return;
+        if (!this.responseText || !this.responseText.includes("users")) return;
 
         const json = JSON.parse(this.responseText);
+
         if (!json?.data?.users) return;
 
-                                   
-        console.log("✅ USERS:", json.data.users);
 
         latestUsers = json.data.users;
 
-        setTimeout(applySmartLogic, 300);
+        applySmartLogic();
 
       } catch (e) {
-        console.error("Hook lỗi:", e);
       }
     });
 
     return originalSend.apply(this, arguments);
   };
 
-  function applySmartLogic() {
+  // ===== LOGIC CHÍNH =====
+function applySmartLogic() {
     if (!latestUsers.length) return;
-
     const activeUser = latestUsers.find(u =>
       u.time_spent && u.time_spent.includes("phút")
     );
-    if (!activeUser) return;
-
+    if (!activeUser) {
+      return;
+    }
     const entered = Number(activeUser.entered_at);
     const shownMinutes = parseInt(activeUser.time_spent);
     if (!entered || isNaN(shownMinutes)) return;
-
     const localNow = Math.floor(Date.now() / 1000);
     const serverNow = entered + (shownMinutes * 60);
     const offset = serverNow - localNow;
-
     latestUsers.forEach(user => {
       if (user.time_spent !== "Đạt tối đa") return;
-
       const enteredAt = Number(user.entered_at);
       if (!enteredAt) return;
-
       let now = Math.floor(Date.now() / 1000) + offset;
       let diff = now - enteredAt;
-
       if (diff < 0) diff = 0;
-
       const minutes = Math.floor(diff / 60);
+      //tính ra <= 0 giữ nguyên
       if (minutes <= 0) return;
-
       updateDOM(user.id, minutes);
-    });
-  }
-
-
+    });}
   function updateDOM(userId, minutes) {
     const row = document.querySelector(`.user-row[data-user-id="${userId}"]`);
     if (!row) return;
@@ -7866,21 +7821,27 @@ if (selectedIds.length >= 2) {
   }); observer.observe(document.body, {
     childList: true,subtree: true
   });
-  (function enableAvatarProfileClick(){
+
+// ===== CLICK AVATAR =====
+(function enableAvatarProfileClick(){
   document.addEventListener("click", function(e){
     const avatarBox = e.target.closest(".avatar-km, img.avatar-50px");
     if(!avatarBox) return;
+
     const img = avatarBox.querySelector("img.avatar-50px") || avatarBox;
     if(!img || !img.src) return;
+
     e.preventDefault();
     e.stopPropagation();
+
     const match = img.src.match(/ultimatemember\/(\d+)\//i);
     if(!match) return;
+
     const userId = match[1];
     const url = buildUrl(`/profile/${userId}`);
     window.location.href = url;
   }, true);
-  })();
+})();
   (function () {
 
 const CURRENT_VERSION = GM_info.script.version;
@@ -8076,8 +8037,6 @@ name.after(div);
 row.dataset.tuviInjected=true;
 });
 
-
-  
 } 
 // ===== RUN =====
 getMyTuvi();
