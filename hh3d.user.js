@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.8
+// @version      1.9
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -4356,9 +4356,10 @@ async function fetchNonce() {
   try {
     console.log("🌐 Fetch Hoang Vực lấy nonce...");
 
-    const res = await fetch("/hoang-vuc", {
-      credentials: "include"
-    });
+   const res = await fetch("/hoang-vuc", {
+  credentials: "include",
+  cache: "no-store" // 🔥 quan trọng
+});
 
     const html = await res.text();
 
@@ -4384,17 +4385,15 @@ async function fetchNonce() {
 
 // ===== LẤY ACTION + NONCE =====
 async function getShopData() {
-  console.log("===== [SHOP FINAL] =====");
+  console.log("===== [SHOP FORCE NEW NONCE] =====");
 
   const pageData = await getPageData();
 
   let action = pageData?.action || null;
   let nonce = pageData?.nonce || null;
 
-  // ✅ Ưu tiên data trực tiếp từ page
   if (action && nonce) {
     console.log("✅ Lấy trực tiếp từ page");
-    localStorage.setItem("bossBuy_nonce", nonce);
     return { action, nonce };
   }
 
@@ -4403,15 +4402,7 @@ async function getShopData() {
     return null;
   }
 
-  // ✅ fallback: lấy nonce từ cache
-  nonce = localStorage.getItem("bossBuy_nonce");
-
-  if (nonce) {
-    console.log("⚡ Dùng nonce cache");
-    return { action, nonce };
-  }
-
-  // ✅ fallback cuối: fetch
+  // 🔥 LUÔN fetch nonce mới
   nonce = await fetchNonce();
 
   if (!nonce) {
