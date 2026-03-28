@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      1.9
+// @version      2.0
 // @description  Script HH3D
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -1262,7 +1262,59 @@ GM_addStyle(`
 #autoMenu{
   transition: transform .4s ease;
 }
+#autoMenu { will-change: left, top; }
+#autoMenu {
+  transition: all .35s cubic-bezier(.25,.8,.25,1);
+  transform-origin: top right;
+}
 
+/* ===== THU NHỎ THÀNH NÚT TRÒN TRONG SUỐT ===== */
+#autoMenu.collapsed {
+  width:50px !important;
+  height:50px !important;
+  padding:0 !important;
+  border-radius:50% !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  overflow:hidden;
+  border:none !important;
+}
+
+/* Ẩn toàn bộ nội dung */
+#autoMenu.collapsed > *:not(#collapseBtn){
+  opacity:0;
+  transform:scale(.3);
+  pointer-events:none;
+}
+
+/* ===== NÚT + TRONG SUỐT ===== */
+#collapseBtn {
+  transition: all .3s ease;
+}
+
+/* khi thu */
+#autoMenu.collapsed #collapseBtn {
+  width:50px;
+  height:50px;
+  top:0;
+  right:0;
+  border-radius:50%;
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.2);
+  font-size:22px;
+}
+
+/* hover cho đẹp */
+#autoMenu.collapsed #collapseBtn:hover {
+  background:rgba(255,255,255,0.15);
+  transform:scale(1.1);
+}
+
+/* nội dung hiện lại */
+#autoMenu > * {
+  transition: all .25s ease;
+}
 #autoMenu{cursor:move;position:fixed;top:80px;right:10px;background:#222;border:1px solid #555;border-radius:8px;padding:10px;color:#fff;font-size:14px;z-index:99999}
 #autoMenu label{display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin:4px 0;width:100%;box-sizing:border-box}
 .switch{flex-shrink:0;position:relative;display:inline-block;width:50px;height:24px}
@@ -1685,20 +1737,88 @@ if (phucLoiHoanThanhRegex.test(text)) {
   },300);})();
 // ========== DRAG & DROP MENU ==========
 (function enableMenuDrag(){
-  const menu=document.getElementById("autoMenu");if(!menu)return;
-  let x=localStorage.getItem("autoMenuX"),y=localStorage.getItem("autoMenuY");
-  if(x&&y){menu.style.left=x+"px";menu.style.top=y+"px";menu.style.right="auto";menu.style.position="fixed";}
-  let drag=false,off=[0,0];
-  const getClient=e=>e.touches&&e.touches.length?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};
-  const start=e=>{if(["INPUT","BUTTON","LABEL","SPAN"].includes(e.target.tagName))return;let{ x,y}=getClient(e);drag=true;off=[menu.offsetLeft-x,menu.offsetTop-y];e.preventDefault();};
-  const stop=()=>{if(drag){localStorage.setItem("autoMenuX",menu.offsetLeft);localStorage.setItem("autoMenuY",menu.offsetTop);}drag=false;};
-  const move=e=>{if(!drag)return;let{ x,y}=getClient(e);menu.style.left=(x+off[0])+"px";menu.style.top=(y+off[1])+"px";menu.style.right="auto";menu.style.position="fixed";e.preventDefault();};
-  menu.addEventListener("mousedown",start,true);
-  document.addEventListener("mouseup",stop,true);
-  document.addEventListener("mousemove",move,true);
-  menu.addEventListener("touchstart",start,true);
-  document.addEventListener("touchend",stop,true);
-  document.addEventListener("touchmove",move,true);})();
+  const menu = document.getElementById("autoMenu");
+  if(!menu) return;
+
+  // load vị trí đã lưu
+  let x = localStorage.getItem("autoMenuX");
+  let y = localStorage.getItem("autoMenuY");
+
+  if(x && y){
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+    menu.style.right = "auto";
+    menu.style.position = "fixed";
+  }
+
+  let drag = false;
+  let moved = false;
+  let off = [0,0];
+  let startX = 0, startY = 0;
+
+  let ticking = false;
+
+  const getClient = e =>
+    e.touches && e.touches.length
+      ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      : { x: e.clientX, y: e.clientY };
+
+  // ===== START =====
+  const start = e => {
+    if(["INPUT","BUTTON","LABEL","SPAN"].includes(e.target.tagName)) return;
+
+    const p = getClient(e);
+
+    drag = true;
+    moved = false;
+
+    startX = p.x;
+    startY = p.y;
+
+    off = [menu.offsetLeft - p.x, menu.offsetTop - p.y];
+
+    e.preventDefault();
+  };
+
+  // ===== MOVE (SMOOTH) =====
+  const move = e => {
+    if(!drag) return;
+
+    const p = getClient(e);
+    // chống nhạy
+    if(!moved){
+      if(Math.abs(p.x - startX) < 4 && Math.abs(p.y - startY) < 4){
+        return;
+      }
+      moved = true;
+    }
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        menu.style.left = (p.x + off[0]) + "px";
+        menu.style.top = (p.y + off[1]) + "px";
+        menu.style.right = "auto";
+        menu.style.position = "fixed";
+        ticking = false;
+      });
+      ticking = true;
+    }
+  };
+  // ===== STOP =====
+  const stop = () => {
+    if(drag && moved){
+      localStorage.setItem("autoMenuX", menu.offsetLeft);
+      localStorage.setItem("autoMenuY", menu.offsetTop);
+    }
+    drag = false;
+  };
+  // ===== EVENTS (bỏ capture để mượt hơn) =====
+  menu.addEventListener("mousedown", start);
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", stop);
+  menu.addEventListener("touchstart", start);
+  document.addEventListener("touchmove", move);
+  document.addEventListener("touchend", stop);
+})();
 const togglePL=document.getElementById("togglePhucLoi"),
       toggleTL=document.getElementById("toggleThiLuyen"),
       toggleHV=document.getElementById("toggleHoangVuc"),
@@ -1738,31 +1858,53 @@ menu.appendChild(bottomTools);
 // Popup tặng bông
 const popupDiv=document.createElement("div");
 popupDiv.style="position:fixed;top:120px;right:20px;background:#1e1e1e;border:1px solid #555;border-radius:8px;padding:10px;color:#fff;font-size:14px;z-index:100000;display:none;min-width:200px;";
-const savedState=localStorage.getItem("menuCollapsed")==="1";
-const collapseBtn=document.createElement("button");
-collapseBtn.textContent=savedState?"+":"–";
-collapseBtn.style="position:absolute;top:4px;right:4px;background:transparent;color:#fff;border:none;cursor:pointer;font-size:16px;z-index:100000;";
-[...menu.children].forEach(ch=>{if(ch!==collapseBtn)ch.dataset.origDisplay=getComputedStyle(ch).display;});
-let collapsed=savedState,savedWidth=null;
-function applyMenuState(state,instant=false){
-  collapsed=state;
+const savedState = localStorage.getItem("menuCollapsed") === "1";
+/// THU MENU
+const collapseBtn = document.createElement("button");
+collapseBtn.id = "collapseBtn";
+collapseBtn.textContent = savedState ? "+" : "–";
+
+collapseBtn.style = `
+position:absolute;
+top:6px;
+right:6px;
+width:26px;
+height:26px;
+border-radius:50%;
+border:none;
+background:rgba(0,0,0,.6);
+color:#fff;
+cursor:pointer;
+font-size:16px;
+display:flex;
+align-items:center;
+justify-content:center;
+z-index:100000;
+`;
+
+menu.appendChild(collapseBtn);
+
+let collapsed = false;
+
+function applyMenuState(state){
+  collapsed = state;
+
   if(collapsed){
-    if(!savedWidth)savedWidth=menu.offsetWidth+"px";
-    [...menu.children].forEach(ch=>{if(ch!==collapseBtn)ch.style.display="none";});
-    menu.style.minWidth=savedWidth;
-    collapseBtn.textContent="+";
+    menu.classList.add("collapsed");
+    collapseBtn.textContent = "+";
   }else{
-    [...menu.children].forEach(ch=>{if(ch!==collapseBtn)ch.style.display=ch.dataset.origDisplay||"block";});
-    menu.style.minWidth="";
-    collapseBtn.textContent="–";
+    menu.classList.remove("collapsed");
+    collapseBtn.textContent = "–";
   }
-  localStorage.setItem("menuCollapsed",collapsed?"1":"0");
+
+  localStorage.setItem("menuCollapsed", collapsed ? "1" : "0");
 }
-      
-applyMenuState(savedState, true);
-menu.appendChild(collapseBtn);
-collapseBtn.onclick = () => { applyMenuState(!collapsed);};
-menu.appendChild(collapseBtn);
+
+applyMenuState(savedState);
+
+collapseBtn.onclick = () => {
+  applyMenuState(!collapsed);
+};
 document.body.appendChild(popupDiv);
     const domainInput = document.getElementById("domainConfigInput");
 // load domain đã lưu
@@ -6659,7 +6801,7 @@ toggleHV.onchange=()=>{const on=toggleHV.checked;localStorage.setItem("hoangvucT
 // ===== CONFIG =====
 const AUTO_KEY = "HH3D_AUTO_SETTINGS";
 const AUTO_RUN_KEY = "HH3D_AUTO_LAST_RUN";
-
+const AUTO_TASK_KEY = "HH3D_AUTO_TASKS";
 // ===== LOAD / SAVE SETTINGS =====
 function loadSettings() {
   return JSON.parse(localStorage.getItem(AUTO_KEY) || "{}");
@@ -6675,7 +6817,23 @@ function getToday() {
     String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0");
 }
+function loadTask() {
+  return JSON.parse(localStorage.getItem(AUTO_TASK_KEY) || "{}");
+}
 
+function saveTask(data) {
+  localStorage.setItem(AUTO_TASK_KEY, JSON.stringify(data));
+}
+
+function isDone(task) {
+  return loadTask()[task] === getToday();
+}
+
+function markDone(task) {
+  const data = loadTask();
+  data[task] = getToday();
+  saveTask(data);
+}
 // ===== CHECK ĐÃ CHẠY HÔM NAY CHƯA =====
 function isAutoRanToday() {
   const last = localStorage.getItem(AUTO_RUN_KEY);
@@ -6724,26 +6882,21 @@ box.innerHTML =
   '<span id="closeAutoMenu" style="cursor:pointer;font-size:14px">✖</span>' +
   '</div>' +
 
-  `<div style="font-size:12px;color:${ran ? "#4caf50" : "#aaa"};margin-bottom:8px;text-align:center;">
-    ${ran ? "✅ Đã chạy hôm nay" : "⏳ Chưa chạy"}
-  </div>` +
+'<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">' +
 
-  // checkbox đẹp hơn
-  '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">' +
+makeRow("autoDiemDanh","diemdanh","📅 Điểm danh+tế lễ vấn đáp") +
+makeRow("autoLuanVo","luanvo","🥋 Luận võ") +
+makeRow("autoPhucLoi","phucloi","🎁 Phúc Lợi") +
+makeRow("autoThiLuyen","thiluyen","⚔️ Thí Luyện") +
+makeRow("autoHoangVuc","hoangvuc","⛏️ Hoang Vực") +
+makeRow("autoBiCanh","bicanh","💎 Bí Cảnh") +
+makeRow("autoHapThu","hapthu","✨ Hấp Thụ Linh Thạch") +
 
-    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
-    '<input type="checkbox" id="autoFlower"> 🌹 Tặng hoa</label>' +
-
-    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
-    '<input type="checkbox" id="autoWish"> 🌸 Ước nguyện</label>' +
-
-    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
-    '<input type="checkbox" id="autoTurns"> 🎟 Nhận lượt Khắc</label>' +
-
-    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">' +
-    '<input type="checkbox" id="autoRuong"> Mua Rương LB</label>' +
-
-  '</div>' +
+makeRow("autoFlower","flower","🌹 Tặng hoa") +
+makeRow("autoWish","wish","🌸 Ước nguyện") +
+makeRow("autoTurns","turns","🎟 Nhận lượt Khắc") +
+makeRow("autoRuong","ruong","🛒 Mua Rương LB") +
+'</div>' +
 
   // nút chọn bạn
   '<button id="btnPickFriends" style="margin-top:4px;width:100%;padding:6px;background:#3a3a3a;color:#fff;border:none;border-radius:6px;cursor:pointer;">👥 Chọn bạn</button>' +
@@ -6754,7 +6907,11 @@ box.innerHTML =
   document.body.appendChild(box);
 
   // set checkbox
-  ["autoFlower","autoWish","autoTurns","autoRuong"].forEach(id=>{
+[
+ "autoFlower","autoWish","autoTurns","autoRuong",
+ "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu",
+ "autoDiemDanh","autoLuanVo"
+].forEach(id=>{
     const el = box.querySelector("#"+id);
     if (!el) return;
     el.checked = settings[id] || false;
@@ -6774,12 +6931,41 @@ box.innerHTML =
   };
 
   // reset
-  box.querySelector("#resetAutoRun").onclick = () => {
-    localStorage.removeItem(AUTO_RUN_KEY);
-    showToast("♻ Đã reset, có thể chạy lại");
-  };
-}
+box.querySelector("#resetAutoRun").onclick = () => {
+  localStorage.removeItem(AUTO_RUN_KEY);
+  localStorage.removeItem(AUTO_TASK_KEY);
 
+  // update lại toàn bộ status
+[
+  "phucloi","thiluyen","hoangvuc","bicanh","hapthu",
+  "flower","wish","turns","ruong",
+  "diemdanh","luanvo"
+].forEach(updateStatus);
+
+  showToast("♻ Reset toàn bộ!");
+};
+}
+function makeRow(id, key, text) {
+  const done = isDone(key);
+
+  return `
+  <label style="display:flex;justify-content:space-between;align-items:center;">
+    <span>
+      <input type="checkbox" id="${id}"> ${text}
+    </span>
+    <span id="status_${key}" style="font-size:11px;color:${done ? "#4caf50":"#aaa"}">
+      ${done ? "✔" : "⏳"}
+    </span>
+  </label>`;
+}
+    function updateStatus(key) {
+  const el = document.getElementById("status_" + key);
+  if (!el) return;
+
+  const done = isDone(key);
+  el.innerText = done ? "✔" : "⏳";
+  el.style.color = done ? "#4caf50" : "#aaa";
+}
 // ===== PICK FRIEND =====
 async function showFriendPicker() {
   const friends = await getFriendsList();
@@ -6853,13 +7039,17 @@ saveBtn.style.cssText = `
 }
 
 // ===== AUTO =====
-    function autoRuong() {
-  if (!loadSettings().autoRuong) return;
+function autoRuong() {
+  if (!loadSettings().autoRuong || isDone("ruong")) return;
+
   document.querySelector("#btnRuongLB")?.click();
+
+  markDone("ruong");
+  updateStatus("ruong");
 }
 async function autoGiftFlower() {
   const settings = loadSettings();
-  if (!settings.autoFlower) return;
+  if (!settings.autoFlower || isDone("flower")) return;
 
   const ids = settings.selectedFriends || [];
   if (!ids.length) return;
@@ -6873,41 +7063,164 @@ async function autoGiftFlower() {
     await giftFlower3(f);
     await new Promise(r => setTimeout(r, 1200));
   }
+
+  markDone("flower");
+  updateStatus("flower");
 }
 
 
 async function autoWish() {
-  const settings = loadSettings();
-  if (!settings.autoWish) return;
+  if (!loadSettings().autoWish || isDone("wish")) return;
+
   await makeWishTree();
+
+  markDone("wish");
+  updateStatus("wish");
 }
 
 function autoTurns() {
-  if (!loadSettings().autoTurns) return;
+  if (!loadSettings().autoTurns || isDone("turns")) return;
+
   document.querySelector("#btnClaimTurns")?.click();
+
+  markDone("turns");
+  updateStatus("turns");
 }
 
+function autoPhucLoiClick() {
+  if (!loadSettings().autoPhucLoi || isDone("phucloi")) return;
 
+  console.log("🎁 Phúc lợi");
+
+  const toggle = document.querySelector("#togglePhucLoi");
+  if (!toggle) return;
+
+  // nếu chưa bật thì mới click
+  if (!toggle.checked) {
+    toggle.click();
+  }
+
+  // chờ xử lý xong mới đánh dấu
+  setTimeout(() => {
+    markDone("phucloi");
+    updateStatus("phucloi");
+  }, 1200);
+}
+function autoThiLuyenClick() {
+  if (!loadSettings().autoThiLuyen || isDone("thiluyen")) return;
+
+  console.log("⚔️ Thí luyện");
+
+  document.querySelector("#toggleThiLuyen")?.click();
+
+  setTimeout(() => {
+    markDone("thiluyen");
+    updateStatus("thiluyen");
+  }, 800);
+}
+
+function autoHoangVucClick() {
+  if (!loadSettings().autoHoangVuc || isDone("hoangvuc")) return;
+
+  console.log("⛏️ Hoang vực");
+
+  document.querySelector("#toggleHoangVuc")?.click();
+
+  setTimeout(() => {
+    markDone("hoangvuc");
+    updateStatus("hoangvuc");
+  }, 800);
+}
+
+function autoBiCanhClick() {
+  if (!loadSettings().autoBiCanh || isDone("bicanh")) return;
+
+  console.log("💎 Bí cảnh");
+
+  document.querySelector("#toggleBiCanh")?.click();
+
+  setTimeout(() => {
+    markDone("bicanh");
+    updateStatus("bicanh");
+  }, 800);
+}
+function autoHapThuClick() {
+  if (!loadSettings().autoHapThu || isDone("hapthu")) return;
+
+  console.log("✨ Hấp thụ");
+
+  document.querySelector("#hapThuBtn")?.click();
+
+  setTimeout(() => {
+    markDone("hapthu");
+    updateStatus("hapthu");
+  }, 800);
+}
+function autoDiemDanhClick() {
+  if (!loadSettings().autoDiemDanh || isDone("diemdanh")) return;
+
+  console.log("📅 Điểm danh");
+
+  document.querySelector("#btnDiemDanh")?.click();
+
+  setTimeout(() => {
+    markDone("diemdanh");
+    updateStatus("diemdanh");
+  }, 800);
+}
+
+function autoLuanVoClick() {
+  if (!loadSettings().autoLuanVo || isDone("luanvo")) return;
+
+  console.log("🥋 Luận võ");
+
+  document.querySelector("#btnLuanVo")?.click();
+
+  setTimeout(() => {
+    markDone("luanvo");
+    updateStatus("luanvo");
+  }, 800);
+}
 
 // ===== RUN AUTO =====
 async function runAuto() {
-  if (isAutoRanToday()) {
-    console.log("⛔ Đã chạy hôm nay");
-    return;
-  }
-
   console.log("🚀 AUTO RUN");
 
-  await autoWish();
+  // ===== TASK NHẸ CHẠY TRƯỚC =====
+  autoDiemDanhClick();
+  await sleep(4000);
+
+  autoPhucLoiClick();
+  await sleep(4000);
+
+  autoThiLuyenClick();
+  await sleep(4000);
+
+  autoHoangVucClick();
+  await sleep(4000);
+
+  autoBiCanhClick();
+  await sleep(4000);
+
+  autoHapThuClick();
+  await sleep(4000);
+
+  // ===== AUTO KHÁC =====
   await autoGiftFlower();
+  await sleep(4000);
+
+  await autoWish();
+  await sleep(4000);
 
   autoTurns();
+  await sleep(4000);
+
   autoRuong();
+  await sleep(4000);
 
-      
-  markAutoRan();
+  // ===== LUẬN VÕ CHẠY CUỐI =====
+  autoLuanVoClick();
 }
-
 function initAuto() {
   console.log("🚀 INIT AUTO");
 
