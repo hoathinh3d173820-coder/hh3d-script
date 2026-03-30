@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.0
-// @description  Script HH3D
+// @version      2.1
+// @description  Cập nhật Mở lì xì vip (ẩn)
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
@@ -3020,12 +3020,49 @@ function parseWeddingRooms(rooms) {
 
   return { blessList, giftList };
 }
+// ================== MỞ ALL LÌ XÌ DÀNH CHO (VIP) ==================
+async function quickOpenAllLiXi() {
+  const res = await callApi({
+    action: "hh3d_quick_open_all_li_xi"
+  });
 
+  if (!res?.data) {
+    showToast("⚠️ Mở lì xì nhanh: không có phản hồi", "error");
+    return;
+  }
+
+  const data = res.data;
+
+  if (data.success) {
+    showToast(
+      `🎁 Mở nhanh ${data.opened_count || 0} lì xì`,
+      "success"
+    );
+
+    // 👉 HIỆN SUMMARY (nếu có)
+    if (Array.isArray(data.summary)) {
+      data.summary.forEach(item => {
+        showToast(
+          `+ ${item.total} ${item.name} ${item.icon || ""}`,
+          "success"
+        );
+      });
+    }
+
+  } else {
+    showToast(
+      `❌ Mở lì xì VIP thất bại: ${data.message}`,
+      "error"
+    );
+  }
+}
 // ================== MAIN AUTO ==================
 async function runWeddingAuto() {
   try {
     showToast("💒 Tiên Duyên đang chạy...", "info");
-
+// 🔥 VIP: mở lì xì ẩn trước
+await quickOpenAllLiXi();
+await wait(500);
     // 1️⃣ NONCE
     const nonce = localStorage.getItem("HH3D_NONCE_WP");
     if (!nonce) {
@@ -6616,11 +6653,10 @@ function showPopup(contentHtml){
 /* TIẾN ĐỘ NGÀY - FULL LAYOUT MỚI */
 async function getBHDProgress(){
   try{
-    const resp = await fetch("https://hoathinh3d.ai/nhiem-vu-hang-ngay/",{
-      credentials:"include",
-      cache:"no-store"
-    });
-
+ const resp = await fetch(buildUrl("/nhiem-vu-hang-ngay/"),{
+  credentials:"include",
+  cache:"no-store"
+});
     const html = await resp.text();
     const doc = new DOMParser().parseFromString(html,"text/html");
 
@@ -6721,7 +6757,6 @@ chests.forEach((chest, index) => {
     ================================ */
     const order = [
       "Điểm Danh",
-      "Luận Võ",
       "Hoang Vực",
       "Phúc Lợi Đường",
       "Vấn Đáp",
