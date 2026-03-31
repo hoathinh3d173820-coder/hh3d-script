@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.1
-// @description  Cập nhật Mở lì xì vip (ẩn)
+// @version      2.2
+// @description  Cập nhật auto run
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
@@ -6833,33 +6833,48 @@ toggleTD.onchange=()=>{const on=toggleTD.checked;localStorage.setItem("tienDoTog
 togglePL.onchange=()=>{const on=togglePL.checked;localStorage.setItem("phucloiToggle",on?"on":"off");if(on)autoPhucLoiHidden();else{localStorage.removeItem("nextRun_PL");if(typeof stopAutoPhucLoiHidden==="function")stopAutoPhucLoiHidden()}};
 toggleHV.onchange=()=>{const on=toggleHV.checked;localStorage.setItem("hoangvucToggle",on?"on":"off");if(on)autoHoangVucHidden();else{if(typeof stopAutoHoangVucHidden==="function")stopAutoHoangVucHidden();showToast("🛑 Auto Hoang Vực đã tắt.","error")}};
 // HIỆN THÔNG TIN MỎ =
+
 // ===== CONFIG =====
-const AUTO_KEY = "HH3D_AUTO_SETTINGS";
-const AUTO_RUN_KEY = "HH3D_AUTO_LAST_RUN";
-const AUTO_TASK_KEY = "HH3D_AUTO_TASKS";
-// ===== LOAD / SAVE SETTINGS =====
-function loadSettings() {
-  return JSON.parse(localStorage.getItem(AUTO_KEY) || "{}");
-}
-function saveSettings(data) {
-  localStorage.setItem(AUTO_KEY, JSON.stringify(data));
+const GLOBAL_KEY = "HH3D_GLOBAL_DATA";
+
+// ===== GLOBAL STORAGE =====
+function loadGlobal() {
+  return GM_getValue(GLOBAL_KEY, {}) || {};
 }
 
-// ===== LẤY NGÀY LOCAL (FIX TIMEZONE) =====
+function saveGlobal(data) {
+  GM_setValue(GLOBAL_KEY, data);
+}
+// ===== SETTINGS =====
+function loadSettings() {
+  return loadGlobal().settings || {};
+}
+
+function saveSettings(data) {
+  const g = loadGlobal();
+  g.settings = data;
+  saveGlobal(g);
+}
+
+function loadTask() {
+  return loadGlobal().tasks || {};
+}
+
+function saveTask(data) {
+  const g = loadGlobal();
+  g.tasks = data;
+  saveGlobal(g);
+}
+
+// ===== TIME =====
 function getToday() {
   const d = new Date();
   return d.getFullYear() + "-" +
     String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0");
 }
-function loadTask() {
-  return JSON.parse(localStorage.getItem(AUTO_TASK_KEY) || "{}");
-}
 
-function saveTask(data) {
-  localStorage.setItem(AUTO_TASK_KEY, JSON.stringify(data));
-}
-
+// ===== TASK CHECK =====
 function isDone(task) {
   return loadTask()[task] === getToday();
 }
@@ -6869,24 +6884,17 @@ function markDone(task) {
   data[task] = getToday();
   saveTask(data);
 }
-// ===== CHECK ĐÃ CHẠY HÔM NAY CHƯA =====
+
+// ===== AUTO RUN TRACK =====
 function isAutoRanToday() {
-  const last = localStorage.getItem(AUTO_RUN_KEY);
-  const today = getToday();
-
-  // nếu khác ngày → coi như chưa chạy (auto reset luôn)
-  if (last !== today) {
-    return false;
-  }
-
-  return true;
+  return loadGlobal().lastRun === getToday();
 }
 
-// ===== ĐÁNH DẤU ĐÃ CHẠY =====
 function markAutoRan() {
-  localStorage.setItem(AUTO_RUN_KEY, getToday());
+  const g = loadGlobal();
+  g.lastRun = getToday();
+  saveGlobal(g);
 }
-
 // ===== UI MENU =====
 function createAutoMenu() {
   const box = document.createElement("div");
@@ -6916,9 +6924,14 @@ box.innerHTML =
   '<b style="color:#fff;font-size:14px">⚙ Cài đặt Tự Động</b>' +
   '<span id="closeAutoMenu" style="cursor:pointer;font-size:14px">✖</span>' +
   '</div>' +
-
+'<button id="toggleAll" style="margin-bottom:6px;width:100%;padding:5px;background:#2f2f2f;color:#fff;border:none;border-radius:6px;cursor:pointer;">☑ Chọn tất cả</button>' +
 '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">' +
+makeRow("autoWedding","wedding","❤️ Phòng Cưới") +
 
+'<div style="display:flex;gap:6px;align-items:center;">' +
+'<span style="font-size:12px;">⏱</span>' +
+'<input id="weddingInterval" type="number" min="1" placeholder="số phút ktra" style="flex:1;padding:3px;background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:4px;">' +
+'</div>' +
 makeRow("autoDiemDanh","diemdanh","📅 Điểm danh+tế lễ vấn đáp") +
 makeRow("autoLuanVo","luanvo","🥋 Luận võ") +
 makeRow("autoPhucLoi","phucloi","🎁 Phúc Lợi") +
@@ -6944,18 +6957,59 @@ makeRow("autoRuong","ruong","🛒 Mua Rương LB") +
   // set checkbox
 [
  "autoFlower","autoWish","autoTurns","autoRuong",
- "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu",
+ "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu","autoWedding",
  "autoDiemDanh","autoLuanVo"
 ].forEach(id=>{
     const el = box.querySelector("#"+id);
     if (!el) return;
     el.checked = settings[id] || false;
-    el.onchange = () => {
-      settings[id] = el.checked;
-      saveSettings(settings);
-    };
+   el.onchange = () => {
+  settings[id] = el.checked;
+  saveSettings(settings);
+
+  // 👉 nếu là wedding thì restart loop
+  if (id === "autoWedding") {
+    startAutoWeddingLoop();
+  }
+};
+  });
+const toggleBtn = box.querySelector("#toggleAll");
+
+toggleBtn.onclick = () => {
+  const settings = loadSettings();
+startAutoWeddingLoop();
+  // kiểm tra có phải đang all true không
+  const keys = [
+    "autoFlower","autoWish","autoTurns","autoRuong",
+    "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu","autoWedding",
+    "autoDiemDanh","autoLuanVo"
+  ];
+
+  const isAllChecked = keys.every(k => settings[k]);
+
+  // nếu đã all → bỏ hết, chưa → bật hết
+  keys.forEach(k => {
+    settings[k] = !isAllChecked;
+
+    const el = box.querySelector("#" + k);
+    if (el) el.checked = !isAllChecked;
   });
 
+  saveSettings(settings);
+
+  // đổi text nút
+  toggleBtn.innerText = isAllChecked ? "☑ Chọn tất cả" : "❌ Bỏ chọn tất cả";
+};
+    const keys = [
+  "autoFlower","autoWish","autoTurns","autoRuong",
+  "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu","autoWedding",
+  "autoDiemDanh","autoLuanVo"
+];
+
+const isAllChecked = keys.every(k => settings[k]);
+
+box.querySelector("#toggleAll").innerText =
+  isAllChecked ? "❌ Bỏ chọn tất cả" : "☑ Chọn tất cả";
   // đóng
   box.querySelector("#closeAutoMenu").onclick = () => box.remove();
 
@@ -6964,20 +7018,40 @@ makeRow("autoRuong","ruong","🛒 Mua Rương LB") +
     box.remove();
     showFriendPicker();
   };
+// load interval
+const intervalInput = box.querySelector("#weddingInterval");
+intervalInput.value = settings.weddingInterval || 15;
 
+// save interval
+intervalInput.onchange = () => {
+  settings.weddingInterval = Math.max(1, parseInt(intervalInput.value) || 15);
+  saveSettings(settings);
+
+  // 👉 restart loop ngay
+  startAutoWeddingLoop();
+};
   // reset
 box.querySelector("#resetAutoRun").onclick = () => {
-  localStorage.removeItem(AUTO_RUN_KEY);
-  localStorage.removeItem(AUTO_TASK_KEY);
+  const g = loadGlobal();
 
-  // update lại toàn bộ status
-[
-  "phucloi","thiluyen","hoangvuc","bicanh","hapthu",
-  "flower","wish","turns","ruong",
-  "diemdanh","luanvo"
-].forEach(updateStatus);
+  g.tasks = {};
+  g.lastRun = null;
 
-  showToast("♻ Reset toàn bộ!");
+  saveGlobal(g);
+
+  [
+    "phucloi","thiluyen","hoangvuc","bicanh","hapthu",
+    "flower","wish","turns","ruong",
+    "diemdanh","luanvo"
+  ].forEach(updateStatus);
+
+if (weddingTimer) {
+  clearInterval(weddingTimer);
+  weddingTimer = null;
+}
+  showToast("♻ Reset + chạy lại!");
+
+  setTimeout(runAuto, 1000);
 };
 }
 function makeRow(id, key, text) {
@@ -7039,14 +7113,18 @@ async function showFriendPicker() {
       </label>`;
 
     
-    row.querySelector("input").onchange = (e) => {
-      if (e.target.checked) {
-        if (!selected.includes(f.user_id)) selected.push(f.user_id);
-      } else {
-        selected = selected.filter(id => id !== f.user_id);
-      }
-    };
-
+  row.querySelector("input").onchange = (e) => {
+  if (e.target.checked) {
+    if (selected.length >= 5) {
+      e.target.checked = false;
+      showToast("⚠️ Chỉ chọn tối đa 5 người");
+      return;
+    }
+    selected.push(f.user_id);
+  } else {
+    selected = selected.filter(id => id !== f.user_id);
+  }
+};
     popup.appendChild(row);
   });
 
@@ -7082,16 +7160,54 @@ function autoRuong() {
   markDone("ruong");
   updateStatus("ruong");
 }
+function autoWeddingClick() {
+  if (!loadSettings().autoWedding) return;
+
+  setTimeout(() => {
+    console.log("❤️ Đi phòng cưới");
+    document.querySelector("#btnWedding")?.click();
+  }, 1000);
+}
+    let weddingTimer = null;
+
+function startAutoWeddingLoop() {
+  const settings = loadSettings();
+
+  // ❗ nếu tắt thì clear luôn
+  if (!settings.autoWedding) {
+    if (weddingTimer) {
+      clearInterval(weddingTimer);
+      weddingTimer = null;
+    }
+    return;
+  }
+
+  const minutes = settings.weddingInterval || 15;
+
+  autoWeddingClick();
+
+  if (weddingTimer) clearInterval(weddingTimer);
+
+  weddingTimer = setInterval(() => {
+    autoWeddingClick();
+  }, minutes * 60 * 1000);
+
+  console.log(`❤️ Auto cưới mỗi ${minutes} phút`);
+}
 async function autoGiftFlower() {
   const settings = loadSettings();
   if (!settings.autoFlower || isDone("flower")) return;
 
-  const ids = settings.selectedFriends || [];
-  if (!ids.length) return;
+  let ids = settings.selectedFriends || [];
 
   const friends = await getFriendsList();
 
-  for (let id of ids) {
+  // 👉 nếu chưa chọn → auto lấy 5 ng đầu
+  if (!ids.length) {
+    ids = friends.slice(0, 5).map(f => f.user_id);
+  }
+
+  for (let id of ids.slice(0, 5)) {
     const f = friends.find(x => x.user_id == id);
     if (!f) continue;
 
@@ -7216,7 +7332,6 @@ function autoLuanVoClick() {
     updateStatus("luanvo");
   }, 800);
 }
-
 // ===== RUN AUTO =====
 async function runAuto() {
   console.log("🚀 AUTO RUN");
@@ -7261,8 +7376,9 @@ function initAuto() {
 
   setTimeout(runAuto, 3000);
 
-}
 
+  setTimeout(startAutoWeddingLoop, 5000);
+}
 function waitForGameReady() {
   const check = setInterval(() => {
     if (document.body && document.querySelector("body")) {
