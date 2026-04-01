@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.2
+// @version      2.3
 // @description  Cập nhật auto run
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -2245,34 +2245,126 @@ setTimeout(updateProfileInfo, 100);
 let hapThuNonce = null;
   let hapThuRunning = false;
   let hapThuTimer = null;
-  async function getSecurityNonce(url, regex) {
-    try {
-      const html = await fetch(url, {
-          credentials: "include",
-        cache: "no-store"
-      }).then(r => r.text());
-      const m = html.match(regex);
-      if (m) return m[1];
-    } catch (e) {
-      console.error("getSecurityNonce error", e);
+let hapThuData = {
+  nonce: null,
+  hold_timestamp: null
+};
+
+/* ========= GET NONCE + TIMESTAMP ========= */
+async function getSecurityNonce(url) {
+  try {
+    console.log("[HAPTHU] Fetch:", url);
+
+    const html = await fetch(url, {
+      credentials: "include",
+      cache: "no-store"
+    }).then(r => r.text());
+
+    console.log("[HAPTHU] HTML length:", html.length);
+    console.log("[HAPTHU] HTML preview:", html.slice(0, 500));
+    // ✅ tìm biến JS chứa nonce thật
+    const patterns = [
+      /redeemNonce\s*=\s*['"]([a-f0-9]+)['"]/i,
+      /["']redeemNonce["']\s*:\s*["']([a-f0-9]+)["']/i,
+      /linh_thach_nonce\s*[:=]\s*['"]([a-f0-9]+)['"]/i,
+      /["']nonce["']\s*:\s*["']([a-f0-9]+)["']/i
+    ];
+
+    let foundNonce = null;
+
+    for (const regex of patterns) {
+      const match = html.match(regex);
+      if (match) {
+        foundNonce = match[1];
+        console.log("[HAPTHU] ✅ Match nonce pattern:", regex);
+        break;
+      }
     }
-    return null;
+
+    if (!foundNonce) {
+      console.warn("[HAPTHU] ❌ Không tìm thấy nonce trong HTML");
+      return null;
+    }
+
+    // ✅ timestamp kiểu site đang dùng
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    hapThuData = {
+      nonce: foundNonce,
+      hold_timestamp: timestamp
+    };
+    console.log("[HAPTHU] ✅ Nonce:", hapThuData.nonce);
+    console.log("[HAPTHU] ✅ Timestamp:", hapThuData.hold_timestamp);
+
+    return hapThuData;
+
+  } catch (e) {
+    console.error("[HAPTHU] getSecurityNonce error", e);
   }
-  async function fetchHapThuNonce() {
-    const regex =
-      /['"]action['"]\s*:\s*['"]redeem_linh_thach['"][\s\S]*?['"]nonce['"]\s*:\s*['"]([a-f0-9]+)['"]/i;
-    const nonce = await getSecurityNonce(
-      HAPTHU_PAGE_URL + "?t=" + Date.now(),
-      regex
-    );
-    if (nonce) {
-      hapThuNonce = nonce;
-      localStorage.setItem("HH3D_REDEEM_NONCE", nonce);
-      return true;
-    }
-    showToast("❌ Không lấy được nonce Hấp Thụ");
+
+  return null;
+}
+
+/* ========= FETCH NONCE ========= */
+async function fetchHapThuNonce() {
+  const url = HAPTHU_PAGE_URL + "?t=" + Date.now();
+
+  const data = await getSecurityNonce(url);
+
+  if (data && data.nonce) {
+    hapThuNonce = data.nonce;
+
+    localStorage.setItem("HH3D_REDEEM_NONCE", data.nonce);
+    localStorage.setItem("HH3D_TS", data.hold_timestamp);
+    return true;
+  }
+
+  console.error("[HAPTHU] ❌ Không lấy được nonce");
+  showToast("❌ Không lấy được nonce Hấp Thụ");
+
+  return false;
+}
+
+/* ========= REDEEM ========= */
+async function redeemHapThu(code) {
+  if (!hapThuData.nonce) {
+    showToast("⚠️ Chưa có nonce Hấp Thụ");
     return false;
   }
+
+  console.log("[HAPTHU] 🚀 Redeem với:", hapThuData, "code:", code);
+
+  const fd = new FormData();
+  fd.append("action", "redeem_linh_thach");
+  fd.append("code", code);
+  fd.append("nonce", hapThuData.nonce);
+  fd.append("hold_timestamp", hapThuData.hold_timestamp);
+
+  let res;
+
+  try {
+    res = await fetch(HAPTHU_REDEEM_API, {
+      method: "POST",
+      credentials: "include",
+      body: fd
+    }).then(r => r.json());
+
+    console.log("[HAPTHU] 📥 Response:", res);
+
+  } catch (e) {
+    console.error("[HAPTHU] ❌ Fetch lỗi:", e);
+    showToast("❌ Lỗi mạng khi hấp thụ");
+    return false;
+  }
+
+  if (res?.data?.message) {
+    showToast(res.data.message);
+  } else {
+    showToast("⚠️ Không nhận được message từ server");
+  }
+
+  return !!res?.success;
+}
 async function fetchLatestHapThuCode(){
   console.log("[HAPTHU] Fetch code...");
   const fd=new FormData();
@@ -2312,35 +2404,7 @@ async function fetchLatestHapThuCode(){
   showToast("❌ Không tìm thấy code mới");
   return null;
 }
-/* ========= REDEEM ========= */
-async function redeemHapThu(code) {
-  if (!hapThuNonce) {
-    showToast("⚠️ Chưa có nonce Hấp Thụ");
-    return false;
-  }
-  const fd = new FormData();
-  fd.append("action", "redeem_linh_thach");
-  fd.append("code", code);
-  fd.append("nonce", hapThuNonce);
-  let res;
-  try {
-    res = await fetch(HAPTHU_REDEEM_API, {
-      method: "POST",
-      credentials: "include",
-      body: fd
-    }).then(r => r.json());
-  } catch (e) {
-    showToast("❌ Lỗi mạng khi hấp thụ");
-    return false;
-  }
-  if (res?.data?.message) {
-    showToast(res.data.message);
-  } else {
-    showToast("⚠️ Không nhận được message từ server");
-  }
-  // 👉 success hay fail cũng coi là xử lý xong
-  return !!res?.success;
-}
+
 async function runAutoHapThuOnce() {
   if (hapThuRunning) {
     showToast("⏳ Hấp Thụ đang chạy, đừng bấm liên tục");
