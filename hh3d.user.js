@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.3
+// @version      2.4
 // @description  Cập nhật auto run
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -6916,10 +6916,14 @@ function loadSettings() {
 
 function saveSettings(data) {
   const g = loadGlobal();
-  g.settings = data;
+
+  g.settings = {
+    ...(g.settings || {}),
+    ...data
+  };
+
   saveGlobal(g);
 }
-
 function loadTask() {
   return loadGlobal().tasks || {};
 }
@@ -7027,11 +7031,9 @@ makeRow("autoRuong","ruong","🛒 Mua Rương LB") +
     const el = box.querySelector("#"+id);
     if (!el) return;
     el.checked = settings[id] || false;
-   el.onchange = () => {
-  settings[id] = el.checked;
-  saveSettings(settings);
+el.onchange = () => {
+  saveSettings({ [id]: el.checked });
 
-  // 👉 nếu là wedding thì restart loop
   if (id === "autoWedding") {
     startAutoWeddingLoop();
   }
@@ -7040,29 +7042,29 @@ makeRow("autoRuong","ruong","🛒 Mua Rương LB") +
 const toggleBtn = box.querySelector("#toggleAll");
 
 toggleBtn.onclick = () => {
-  const settings = loadSettings();
-startAutoWeddingLoop();
-  // kiểm tra có phải đang all true không
+  const current = loadSettings();
+
   const keys = [
     "autoFlower","autoWish","autoTurns","autoRuong",
     "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu","autoWedding",
     "autoDiemDanh","autoLuanVo"
   ];
 
-  const isAllChecked = keys.every(k => settings[k]);
+  const isAllChecked = keys.every(k => current[k]);
 
-  // nếu đã all → bỏ hết, chưa → bật hết
+  const newData = {};
   keys.forEach(k => {
-    settings[k] = !isAllChecked;
+    newData[k] = !isAllChecked;
 
     const el = box.querySelector("#" + k);
     if (el) el.checked = !isAllChecked;
   });
 
-  saveSettings(settings);
+  saveSettings(newData);
 
-  // đổi text nút
   toggleBtn.innerText = isAllChecked ? "☑ Chọn tất cả" : "❌ Bỏ chọn tất cả";
+
+  startAutoWeddingLoop();
 };
     const keys = [
   "autoFlower","autoWish","autoTurns","autoRuong",
@@ -7258,6 +7260,7 @@ function startAutoWeddingLoop() {
 
   console.log(`❤️ Auto cưới mỗi ${minutes} phút`);
 }
+
 async function autoGiftFlower() {
   const settings = loadSettings();
   if (!settings.autoFlower || isDone("flower")) return;
@@ -8128,6 +8131,7 @@ window.buyAttackTurn = buyAttackTurn;
 }
 function showEnemyPopup(list) {
   document.getElementById("ak-enemy-popup")?.remove();
+
   const overlay = document.createElement("div");
   overlay.id = "ak-enemy-popup";
   overlay.style.cssText = `
@@ -8135,19 +8139,70 @@ function showEnemyPopup(list) {
     z-index: 9999999;display: flex;
     align-items: center;justify-content: center;
   `;
+
   const box = document.createElement("div");
   box.style.cssText = `
     width: 430px;max-height: 520px;
     background: #111;border-radius: 12px;padding: 15px;
     overflow-y: auto;box-shadow: 0 0 20px rgba(0,0,0,0.8);
   `;
+
   const title = document.createElement("div");
-  title.style.cssText = `font-weight:700;color:#00eaff;margin-bottom:8px;
-  `;
+  title.style.cssText = `font-weight:700;color:#00eaff;margin-bottom:8px;`;
   title.textContent = `Danh sách địch (${list.length}) - Đã chọn: 0`;
   box.appendChild(title);
+
   const selected = new Set();
+
+  // ===== SMART TIME OFFSET =====
+  let timeOffset = 0;
+
+  const activeUser = list.find(u =>
+    u.time_spent && u.time_spent.includes("phút")
+  );
+
+  if (activeUser) {
+    const entered = Number(activeUser.entered_at);
+    const shownMinutes = parseInt(activeUser.time_spent);
+
+    if (entered && !isNaN(shownMinutes)) {
+      const localNow = Math.floor(Date.now() / 1000);
+      const serverNow = entered + (shownMinutes * 60);
+      timeOffset = serverNow - localNow;
+    }
+  }
+
+  // ===== RENDER LIST =====
   list.forEach((user, index) => {
+
+    // ===== TÍNH PHÚT REALTIME =====
+    let minutesText = "";
+
+    if (user.time_spent) {
+
+      if (user.time_spent.includes("phút")) {
+        minutesText = user.time_spent;
+
+      } else if (user.time_spent.includes("Đạt tối đa")) {
+        const enteredAt = Number(user.entered_at);
+
+        if (enteredAt && timeOffset) {
+          let now = Math.floor(Date.now() / 1000) + timeOffset;
+          let diff = now - enteredAt;
+          if (diff < 0) diff = 0;
+
+          const minutes = Math.floor(diff / 60);
+
+          minutesText = minutes > 0
+            ? `🔥 ${minutes} phút`
+            : "Đạt tối đa";
+        } else {
+          minutesText = "Đạt tối đa";
+        }
+      }
+    }
+
+    // ===== UI ROW =====
     const row = document.createElement("div");
     row.style.cssText = `
       display:flex;align-items:center;gap:10px;
@@ -8155,26 +8210,35 @@ function showEnemyPopup(list) {
       background:#1c1c1c;border-radius:8px;
       cursor:pointer;transition:0.2s;
     `;
-row.innerHTML = `
-  <div style="color:#888;font-size:12px;width:25px">
-    ${index + 1}
-  </div>
 
-  <div style="flex:1">
-    <div style="font-weight:600;color:#fff">
-      ${user.name}
-    </div>
+    row.innerHTML = `
+      <div style="color:#888;font-size:12px;width:25px">
+        ${index + 1}
+      </div>
 
-    <div style="font-size:12px;color:#00c2ff">
-      ${user.tongName || "Tán Tu"}
-    </div>
+      <div class="avatar-container-header adjust-frame ${user.avatar_frame || ''}"
+           style="width:40px;height:40px;flex-shrink:0;">
 
-    <div style="font-size:12px;color:#aaa">
-      ${user.time_spent || ""}
-    </div>
-  </div>
-`;
+        <img src="${user.avatar || ''}"
+             onerror="this.src='https://i.imgur.com/6VBx3io.png'"
+             class="responsive-img"
+             style="border-radius:50%;object-fit:cover;" />
+      </div>
 
+      <div style="flex:1">
+        <div style="font-weight:600;color:#fff">
+          ${user.name}
+        </div>
+
+        <div style="font-size:12px;color:#00c2ff">
+        ${user.group_role_html || "<span style='color:#888'>Tán Tu</span>"}
+        </div>
+
+        <div style="font-size:12px;color:#aaa">
+          ${minutesText}
+        </div>
+      </div>
+    `;
 // chặn link tông
 row.querySelectorAll("a").forEach(a => {
   a.addEventListener("click", e => {
