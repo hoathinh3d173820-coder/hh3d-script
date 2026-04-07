@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.4
+// @version      2.5
 // @description  Cập nhật auto run
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -2247,7 +2247,8 @@ let hapThuNonce = null;
   let hapThuTimer = null;
 let hapThuData = {
   nonce: null,
-  hold_timestamp: null
+  hold_timestamp: null,
+  lt_token: null
 };
 
 /* ========= GET NONCE + TIMESTAMP ========= */
@@ -2261,8 +2262,8 @@ async function getSecurityNonce(url) {
     }).then(r => r.text());
 
     console.log("[HAPTHU] HTML length:", html.length);
-    console.log("[HAPTHU] HTML preview:", html.slice(0, 500));
-    // ✅ tìm biến JS chứa nonce thật
+
+    /* ========= NONCE ========= */
     const patterns = [
       /redeemNonce\s*=\s*['"]([a-f0-9]+)['"]/i,
       /["']redeemNonce["']\s*:\s*["']([a-f0-9]+)["']/i,
@@ -2276,25 +2277,52 @@ async function getSecurityNonce(url) {
       const match = html.match(regex);
       if (match) {
         foundNonce = match[1];
-        console.log("[HAPTHU] ✅ Match nonce pattern:", regex);
+        console.log("[HAPTHU] ✅ Nonce:", foundNonce);
         break;
       }
     }
 
     if (!foundNonce) {
-      console.warn("[HAPTHU] ❌ Không tìm thấy nonce trong HTML");
+      console.warn("[HAPTHU] ❌ Không tìm thấy nonce");
       return null;
     }
 
-    // ✅ timestamp kiểu site đang dùng
+    /* ========= LT_TOKEN ========= */
+    let foundToken = null;
+
+    // 🔥 1. Ưu tiên parse từ HTML (CHUẨN NHẤT)
+    let m =
+      html.match(/securityToken["']?\s*:\s*["']([^"']+)/i) ||
+      html.match(/"securityToken"\s*:\s*"([^"]+)"/i);
+
+    if (m) {
+      foundToken = m[1];
+      console.log("[HAPTHU] ✅ lt_token từ HTML:", foundToken);
+    }
+
+    // 🔥 2. fallback window
+    if (!foundToken && window.hh3dData?.securityToken) {
+      foundToken = window.hh3dData.securityToken;
+      console.log("[HAPTHU] ✅ lt_token từ window:", foundToken);
+    }
+
+    // 🔥 3. debug nếu vẫn null
+    if (!foundToken) {
+      console.warn("[HAPTHU] ❌ Không tìm thấy lt_token");
+      console.log("[HAPTHU] DEBUG securityToken:", html.match(/securityToken/i));
+      console.log("[HAPTHU] DEBUG hh3dData:", window.hh3dData);
+    }
+
+    /* ========= RETURN ========= */
     const timestamp = Math.floor(Date.now() / 1000);
 
     hapThuData = {
       nonce: foundNonce,
-      hold_timestamp: timestamp
+      hold_timestamp: timestamp,
+      lt_token: foundToken
     };
-    console.log("[HAPTHU] ✅ Nonce:", hapThuData.nonce);
-    console.log("[HAPTHU] ✅ Timestamp:", hapThuData.hold_timestamp);
+
+    console.log("[HAPTHU] FINAL DATA:", hapThuData);
 
     return hapThuData;
 
@@ -2304,7 +2332,6 @@ async function getSecurityNonce(url) {
 
   return null;
 }
-
 /* ========= FETCH NONCE ========= */
 async function fetchHapThuNonce() {
   const url = HAPTHU_PAGE_URL + "?t=" + Date.now();
@@ -2328,83 +2355,139 @@ async function fetchHapThuNonce() {
 /* ========= REDEEM ========= */
 async function redeemHapThu(code) {
   if (!hapThuData.nonce) {
-    showToast("⚠️ Chưa có nonce Hấp Thụ");
+    showToast("⚠️ Chưa có nonce");
     return false;
   }
 
   console.log("[HAPTHU] 🚀 Redeem với:", hapThuData, "code:", code);
 
-  const fd = new FormData();
-  fd.append("action", "redeem_linh_thach");
-  fd.append("code", code);
-  fd.append("nonce", hapThuData.nonce);
-  fd.append("hold_timestamp", hapThuData.hold_timestamp);
+  try {
+    const resp = await fetch(HAPTHU_REDEEM_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      credentials: "include",
+      body: new URLSearchParams({
+        action: "redeem_linh_thach",
+        code: code,
+        nonce: hapThuData.nonce,
+        lt_token: hapThuData.lt_token || "",
+        hold_timestamp: hapThuData.hold_timestamp
+      })
+    });
 
-  let res;
+    const res = await resp.json();
+
+    console.log("[HAPTHU] 📥 Response:", res);
+
+    if (res?.data?.message) {
+      showToast(res.data.message);
+    } else {
+      showToast("⚠️ Không có message");
+    }
+
+    return !!res?.success;
+
+  } catch (e) {
+    console.error("[HAPTHU] ❌ Fetch lỗi:", e);
+    showToast("❌ Lỗi mạng");
+    return false;
+  }
+}
+async function fetchLatestHapThuCode() {
+  console.log("[HAPTHU] Fetch code...");
+
+  const fd = new FormData();
+  fd.append("action", "wpdLoadMoreComments");
+  fd.append("sorting", "newest");
+  fd.append("offset", "0");
+  fd.append("isFirstLoad", "1");
+  fd.append("wpdType", "post");
+  fd.append("postId", HAPTHU_POST_ID);
+  fd.append("lastParentId", "0");
 
   try {
-    res = await fetch(HAPTHU_REDEEM_API, {
+    const res = await fetch(HAPTHU_COMMENT_API, {
       method: "POST",
       credentials: "include",
       body: fd
     }).then(r => r.json());
 
-    console.log("[HAPTHU] 📥 Response:", res);
+    if (!res?.data?.comment_list) {
+      console.warn("[HAPTHU] Không có comment_list");
+      return null;
+    }
+
+    const div = document.createElement("div");
+    div.innerHTML = res.data.comment_list;
+
+    const nodes = div.querySelectorAll(".wpd-comment, .wpd-comment-text");
+
+    // 🔥 Hàm bắt code xịn
+    function extractCode(text) {
+      if (!text) return null;
+
+      text = text.replace(/\u00a0/g, " ").trim();
+
+      // ✅ 1. Ưu tiên keyword
+      let m = text.match(/(?:code|mã)[^a-z0-9]{0,30}([A-Z0-9]{4,})/i);
+      if (m) return m[1].toUpperCase();
+
+      // ✅ 2. fallback: chuỗi IN HOA
+      const matches = text.match(/\b[A-Z0-9]{6,}\b/g);
+      if (matches && matches.length) {
+        const filtered = matches
+          .filter(x =>
+            x.length >= 6 &&
+            x.length <= 20 &&
+            !/^(HTTP|HTTPS|HTML|ID|USER)/.test(x)
+          )
+          .sort((a, b) => b.length - a.length);
+
+        if (filtered.length) return filtered[0];
+      }
+
+      return null;
+    }
+
+    // 🔥 duyệt comment
+    for (const cmt of nodes) {
+      const text = (cmt.innerText || "").trim();
+
+      // 👉 bắt nhanh
+      let code = extractCode(text);
+      if (code) {
+        showToast(`🎁 Code mới: ${code}`);
+        console.log("[HAPTHU] ✅ Code nhanh:", code);
+        return code;
+      }
+
+      // 👉 fetch full comment nếu cần
+      const idMatch = (cmt.id || "").match(/wpd-comm-(\d+)_/);
+      if (!idMatch) continue;
+
+      const fullText = await fetchFullCommentById(idMatch[1]);
+      if (!fullText) continue;
+
+      code = extractCode(fullText);
+      if (code) {
+        showToast(`🎁 Code mới: ${code}`);
+        console.log("[HAPTHU] ✅ Code full:", code);
+        return code;
+      }
+    }
+
+    console.warn("[HAPTHU] Không tìm thấy code");
+    showToast("❌ Không tìm thấy code mới");
+    return null;
 
   } catch (e) {
-    console.error("[HAPTHU] ❌ Fetch lỗi:", e);
-    showToast("❌ Lỗi mạng khi hấp thụ");
-    return false;
+    console.error("[HAPTHU] Lỗi fetch:", e);
+    showToast("❌ Lỗi lấy comment");
+    return null;
   }
-
-  if (res?.data?.message) {
-    showToast(res.data.message);
-  } else {
-    showToast("⚠️ Không nhận được message từ server");
-  }
-
-  return !!res?.success;
 }
-async function fetchLatestHapThuCode(){
-  console.log("[HAPTHU] Fetch code...");
-  const fd=new FormData();
-  fd.append("action","wpdLoadMoreComments");
-  fd.append("sorting","newest");
-  fd.append("offset","0");
-  fd.append("isFirstLoad","1");
-  fd.append("wpdType","post");
-  fd.append("postId",HAPTHU_POST_ID);
-  fd.append("lastParentId","0");
-  const res=await fetch(HAPTHU_COMMENT_API,{method:"POST",credentials:"include",body:fd}).then(r=>r.json());
-  if(!res?.data?.comment_list){console.warn("[HAPTHU] Không có comment_list");return null;}
-  const div=document.createElement("div");
-  div.innerHTML=res.data.comment_list;
-  const nodes=div.querySelectorAll(".wpd-comment,.wpd-comment-text");
-  for(const cmt of nodes){
-    let text=(cmt.innerText||"").replace(/\u00a0/g," ").trim();
-    let m=text.match(/code\s*[:：]?\s*([a-z0-9]{4,})/i);
-    if(m){
-      const code=m[1].toUpperCase();
-      showToast(` Bắt được code mới nhất: ${code}`);
-      return code;
-    }
-    const idMatch=(cmt.id||"").match(/wpd-comm-(\d+)_/);
-    if(!idMatch) continue;
-    const fullText=await fetchFullCommentById(idMatch[1]);
-    if(!fullText) continue;
-    const ft=fullText.replace(/\u00a0/g," ").trim();
-    m=ft.match(/code\s*[:：]?\s*([a-z0-9]{4,})/i);
-    if(m){
-      const code=m[1].toUpperCase();
-      showToast(`🎁 Bắt được code: ${code}`);
-      return code;
-    }
-  }
-  console.warn("[HAPTHU] Không tìm thấy code");
-  showToast("❌ Không tìm thấy code mới");
-  return null;
-}
-
 async function runAutoHapThuOnce() {
   if (hapThuRunning) {
     showToast("⏳ Hấp Thụ đang chạy, đừng bấm liên tục");
