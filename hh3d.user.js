@@ -2,7 +2,7 @@
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
 // @version      2.6
-// @description  Cập nhật auto run
+// @description  Cập nhật mê cung
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
