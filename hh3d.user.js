@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.5
+// @version      2.6
 // @description  Cập nhật auto run
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -12,6 +12,10 @@
 // @updateURL    https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // @downloadURL  https://raw.githubusercontent.com/hoathinh3d173820-coder/hh3d-script/main/hh3d.user.js
 // ==/UserScript==
+// ❌ nếu đang ở trong iframe thì không chạy menu
+if (window.self !== window.top) {
+    return;
+}
 // ===== INIT AUTO KHOANG (GLOBAL) =====
 window.initAutoKhoang = function () {
   'use strict';
@@ -1214,7 +1218,7 @@ function showToast(msg, preview = true, duration = 3000) {
   if (typeof preview === "number") {
     duration = preview;
     preview = true;
- 
+
 }
 TOAST_HISTORY.push({
   msg,
@@ -1494,7 +1498,7 @@ popup.innerHTML = `
         <button data-src="tubao" data-item="item_1748710720801">Đan Dược Thánh Phẩm (2)(+4360 Tu Vi)</button>
     </div>
   </div>
-  
+
   <div style="text-align:center;margin-top:10px">
     <button id="closeBuyDanPopup" style="background:#333;border:1px solid #444;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer">Đóng</button>
   </div>
@@ -1540,7 +1544,7 @@ function ensureTuBaoAjaxShop(timeoutMs = 15000) {
     const start = Date.now();
     const timer = setInterval(() => {
       try {
-        
+
         const win = iframe.contentWindow;
         const ajaxShop = win?.Ajax_Shop;
         if (ajaxShop?.nonce && ajaxShop?.ajaxurl) {
@@ -1621,7 +1625,7 @@ const menuMax = {
   HoangVuc: 5,
   BiCanh: 5
 };
-      
+
 function getMenuData(){
   return JSON.parse(localStorage.getItem("AUTO_MENU_COUNT") || "{}");
 }
@@ -1661,7 +1665,7 @@ function renderMenuCount(key){
 function renderAllMenu(){
   Object.keys(menuMax).forEach(renderMenuCount);
 }
-      
+
 // == RESET QUA NGÀY =
 (function autoResetByDay(){
   const today = new Date().toDateString();
@@ -1849,7 +1853,11 @@ bottomTools.innerHTML = `
 <!-- Hàng 3 -->
 <div style="display:flex; gap:6px; flex-wrap:nowrap;">
   <button id="btnDiemDanh" class="menu-btn" title="Điểm Danh + Tế Lễ Vấn Đáp">📅</button>
-  <button id="btnLuanVo" class="menu-btn" title="Luận Võ">⚔️</button>
+<button id="btnLuanVo" class="menu-btn" title="Mê Cung" style="padding:2px">
+  <div class="icon" style="background:rgba(224,201,127,.16)">
+    <span class="material-icons" style="color:#e0c97f">auto_awesome</span>
+  </div>
+</button>
     <button id="btnSeal" class="menu-btn" title="Khắc Trận Văn">🧿</button>
   <button id="btnToastHistory" class="menu-btn" title="Lịch sử thông báo">📜</button>
 </div>
@@ -2188,7 +2196,7 @@ async function updateProfileInfo() {
   const statsHtml = [...document.querySelectorAll("#head_manage_acc div")].map(
     (e) => e.outerHTML
   );
-      
+
   const tuvi = statsHtml.find((t) => t.includes("Tu Vi")) || `<div>✨ Tu Vi: ?</div>`;
   const thach =
     statsHtml.find((t) => t.includes("Tinh Thạch")) || `<div>💎 Tinh Thạch: ?</div>`;
@@ -2745,6 +2753,8 @@ async function autoClaimActivityAll() {
   activityRewardRunning = false;
 }
     // LẤy TOKEN PHÁP TƯỚNG
+    let AUTO_SEAL = false;
+let isSealing = false;
     let PT_TOKEN_CACHE = null;
 async function getCachedPtToken(forceRefresh = false) {
   if (PT_TOKEN_CACHE && !forceRefresh) {
@@ -2899,21 +2909,54 @@ async function claimDailyTurns() {
 }
     // Hàm gọi Khắc
 async function activateSeal() {
+  if (isSealing) return;
+  isSealing = true;
+
   await callPtApi("/wp-json/phap-tuong/v1/activate-seal", async (data) => {
+
+    const msg = data?.message || "";
+
     // ❌ LỖI THẬT
     if (!data?.success && !data?.is_pity_failure) {
-      showToast(data?.message || "❌ Khắc thất bại", false);
+
+      // HẾT LƯỢT
+if (msg.includes("không còn lượt")) {
+  showToast("❌ Hết lượt khắc", "warn");
+  AUTO_SEAL = false; // dừng auto luôn
+}
+
+      // ĐỦ 9 → TRIỆU HỒI
+      else if (msg.includes("đủ 9")) {
+        showToast("🎯 Đủ 9 → triệu hồi", "warn");
+        await completeSummoning();
+      }
+
+      else {
+        showToast(msg || "❌ Khắc thất bại", false);
+      }
+
+      isSealing = false;
+
+      if (AUTO_SEAL) setTimeout(activateSeal, 300);
       return;
     }
-    // ⚠️ XỊT – PITY
+
+    // ⚠️ XỊT
     if (data?.is_pity_failure) {
-      showToast(data.message || "🔸 Khắc thất bại (tích lũy)", "warn");
-      await loadSealInfo();
-      return;
+      showToast(msg || "🔸 Khắc thất bại (pity)", "warn");
     }
+
     // ✅ THÀNH CÔNG
-    showToast(data.message || "✨ Khắc trận văn thành công!", true);
+    else {
+      showToast(msg || "✨ Khắc trận văn thành công!", true);
+    }
+
     await loadSealInfo();
+
+    isSealing = false;
+
+    // 🔁 AUTO LOOP
+    if (AUTO_SEAL) setTimeout(activateSeal, 200);
   });
 }
     document.getElementById("btnClaimTurns").onclick = claimDailyTurns;
@@ -2924,7 +2967,16 @@ document.getElementById("btnSeal").onclick = async () => {
 document.getElementById("btnCloseSeal").onclick = () => {
   popupSeal.style.display = "none";
 };
-document.getElementById("btnActivateSeal").onclick = activateSeal;
+document.getElementById("btnActivateSeal").onclick = () => {
+  AUTO_SEAL = !AUTO_SEAL;
+
+  if (AUTO_SEAL) {
+    showToast("🚀 Bắt đầu auto khắc", true);
+    activateSeal();
+  } else {
+    showToast("🛑 Đã dừng auto khắc", "warn");
+  }
+};
     document.getElementById("btnCompleteSummon").onclick = completeSummoning;
 // ================== CONFIG ==================
 const WEDDING_RETRY_MIN = 1_000;
@@ -3291,340 +3343,467 @@ function autoChucPhucScheduler() {
   });
 }
 setInterval(autoChucPhucScheduler, 30_000); // check mỗi 30s
-      
-// ========== LUẬN VÕ  – FULL ) ==========
-const LV_BASE = buildUrl("/wp-json/luan-vo/v1");
-    let LV_RUNNING = false;
-let LV_TARGET_LEFT = 0;
-const LV_MAX_BATTLES = 5;
-let LV_TOKEN = null;
-let LV_SENT = 0;
-let LV_RECEIVED = 0;
-let LV_AUTO_ACCEPT = false;
-let currentTarget = null;
-    async function getLvTokenFromHome() {
-  // lấy security token
-  const token = await getSecurityToken(location.href);
-  if (!token) throw new Error("NO_SECURITY_TOKEN");
-  return token;
+function runLuanVoAuto() {
+
+    // tránh mở trùng
+    if (document.getElementById("luanvo_panel")) return;
+
+    let IDS = localStorage.getItem("lv_ids") || "";
+
+
+    const panel = document.createElement("div");
+    panel.id = "luanvo_panel";
+
+    panel.style = `
+        position:fixed;
+        top:120px;
+        left:20px;
+        z-index:99999;
+        background:#1e1e1e;
+        padding:15px;
+        border-radius:12px;
+        width:260px;
+        color:#fff;
+        box-shadow:0 0 15px rgba(0,0,0,0.7);
+        font-size:14px;
+    `;
+
+
+
+panel.innerHTML = `
+<h3 style="margin:0 0 10px;color:#00eaff">⚔️ MÊ CUNG </h3>
+
+<label style="font-size:12px;color:#aaa">ID user giữ lại không trục xuất</label>
+<input id="lv_id"
+value="${IDS}"
+placeholder="VD:1,3,9,1 k nhập sẽ ưu tiên HP"
+style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+
+<label style="font-size:12px;color:#aaa">HP tối thiểu để giữ lại</label>
+<input id="lv_hp"
+value="${localStorage.getItem("lv_hp") || ""}"
+placeholder="VD: 400000"
+style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+
+<button id="lv_create"
+style="width:100%;margin-bottom:10px;background:#00eaff;color:#000;border:none;padding:7px;border-radius:6px;font-weight:bold">
+Lập đội
+</button>
+
+<label style="font-size:12px;color:#aaa">Tên hoặc mã phòng</label>
+<input id="lv_name"
+value="${localStorage.getItem("lv_input") || ""}"
+placeholder="Nhập tên hoặc mã phòng"
+style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+
+<button id="lv_join"
+style="width:100%;background:#666;color:#fff;border:none;padding:7px;border-radius:6px">
+Vào phòng
+</button>
+
+<button id="lv_close"
+style="width:100%;margin-top:10px;background:#ff4444;border:none;padding:6px;border-radius:6px;color:#fff">
+Đóng
+</button>
+`;
+    document.body.appendChild(panel);
+
+    // ===== SAVE =====
+    document.getElementById("lv_id").oninput = e => {
+        localStorage.setItem("lv_ids", e.target.value);
+    };
+document.getElementById("lv_hp").oninput = e => {
+    localStorage.setItem("lv_hp", e.target.value);
+};
+document.getElementById("lv_name").oninput = e => {
+    localStorage.setItem("lv_input", e.target.value);
+};
+
+    // ===== BUTTON =====
+    document.getElementById("lv_create").onclick = () => {
+        openLuanVoIframe("create");
+    };
+
+    document.getElementById("lv_join").onclick = () => {
+        openLuanVoIframe("join");
+    };
+
+    document.getElementById("lv_close").onclick = () => {
+        panel.remove();
+    };
 }
-/* ================== FETCH PAGE + PARSE ================== */
-    function extractLvMessage(data) {
-  if (!data) return "";
-  if (typeof data === "string") return data;
-  if (typeof data.message === "string") return data.message;
-  if (typeof data.data === "string") return data.data;
-  if (typeof data.data?.message === "string") return data.data.message;
-  return "";
+
+    // ===== CHECK =====
+   function isInRoom(doc) {
+    const panel = doc.querySelector("#room-panel");
+
+    // phải tồn tại + đang hiển thị thật
+    return panel && panel.offsetParent !== null;
 }
-async function fetchLvPageInfo() {
-  const url = "/luan-vo-duong?t=" + Date.now();
-  const resp = await fetch(url, {
-    credentials: "include",
-    cache: "no-store"
-  });
-  if (!resp.ok) {
-    throw new Error("Không load được trang Luận Võ");
-  }
-  const html = await resp.text();
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  /* ===== PARSE ĐÃ GỬI / ĐÃ NHẬN ===== */
-  let sent = 0;
-  let received = 0;
-  doc.querySelectorAll("p").forEach(p => {
-    const t = p.innerText || "";
-    if (t.includes("Đã gửi")) {
-      const m = t.match(/(\d+)\s*\/\s*5/);
-      if (m) sent = Number(m[1]);
+
+    function isVisible(el) {
+        return el && el.offsetParent !== null && !el.disabled;
     }
-    if (t.includes("Đã nhận")) {
-      const m = t.match(/(\d+)\s*\/\s*5/);
-      if (m) received = Number(m[1]);
+
+    // ===== IFRAME =====
+function openLuanVoIframe(mode) {
+        let old = document.getElementById("mc_iframe");
+        if (old) old.remove();
+
+        const iframe = document.createElement("iframe");
+        iframe.id = "mc_iframe";
+        iframe.src = "https://hoathinh3d.co/me-cung";
+
+        iframe.style = `
+            position:fixed;width:420px;height:550px;
+            top:50%;left:50%;transform:translate(-50%,-50%);
+            z-index:99998;border:2px solid #00eaff;border-radius:12px;
+        `;
+
+        document.body.appendChild(iframe);
+
+       iframe.onload = () => {
+    const doc = iframe.contentDocument;
+
+    console.log("Iframe loaded");
+
+    // delay lâu hơn vì web này load chậm
+    setTimeout(() => {
+
+        console.log("Bắt đầu xử lý mode:", mode);
+
+        if (isInRoom(doc)) {
+            console.log("Đã ở trong phòng sẵn");
+            afterJoin(doc);
+            return;
+        }
+
+        if (mode === "create") autoCreate(doc);
+        if (mode === "join") autoJoin(doc);
+
+    }, 2000); // ⬅ tăng từ 1000 → 2000
+};
     }
-  });
-  /* ===== AUTO ACCEPT ===== */
-  const autoAccept =
-    doc.querySelector("#auto_accept_toggle")?.checked || false;
-  /* ===== CẦN JOIN HAY KHÔNG ===== */
-  const needJoin = !!doc.querySelector("#joinBattleImg");
-  /* ===== CÓ THƯỞNG HAY KHÔNG ===== */
-  const hasReward = !!doc.querySelector("#receive-reward-btn");
-  return {sent,received,autoAccept, needJoin, hasReward};}
-let LV_NEED_JOIN = false;
-    async function joinLuanVoBattle() {
-  const securityToken = await getSecurityToken(location.href);
-  if (!securityToken) {
-    showToast("❌ Không lấy được security token");
-    return false;
-  }
-  const resp = await fetch(LV_BASE + "/join-battle", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "XMLHttpRequest",
-      "X-WP-Nonce": getWpNonce()
-    },
-    body: JSON.stringify({
-      action: "join_battle",
-      security_token: securityToken
-    })
-  });
-  const data = await resp.json();
-  console.log("[LV] join-battle:", data);
-  if (data.success) {
-    showToast("✅ Đã gia nhập Luận Võ");
-    return true;
-  }
-  showToast("⚠️ Không join được Luận Võ");
-  return false;
+
+    // ===== CREATE =====
+function autoCreate(doc) {
+    const loop = setInterval(() => {
+        const btn = doc.querySelector(".btn-create-room");
+        if (isVisible(btn)) {
+            console.log("Tạo phòng");
+            btn.click();
+            clearInterval(loop);
+
+            setTimeout(() => {
+                doc.querySelector(".confirm-btn-ok")?.click();
+            }, 800);
+
+            const waitRoom = setInterval(() => {
+                if (isInRoom(doc)) {
+                    console.log("✔ Đã vào phòng sau create");
+                    clearInterval(waitRoom);
+                    afterJoin(doc); // ✅ CHẠY AUTO
+                }
+            }, 1000);
+        }
+    }, 1000);
 }
-async function ensureLvContext() {
-  //  lấy trạng thái
-  const info = await fetchLvPageInfo();
-  //  lấy token từ trang chủ
-  if (!LV_TOKEN) {
-    try {
-      LV_TOKEN = await getLvTokenFromHome();
-      console.log("[LV] dùng security_token làm x-lv-token");
-    } catch (e) {
-      console.warn("[LV] không lấy được security_token");
+    // ===== JOIN =====
+function autoJoin(doc) {
+
+    const loop = setInterval(() => {
+
+        let INPUT = (localStorage.getItem("lv_input") || "").toLowerCase().trim();
+
+        if (!INPUT) {
+            console.log("⚠️ Chưa nhập input");
+            return;
+        }
+
+        console.log("Đang scan phòng với input:", INPUT);
+
+        if (isInRoom(doc)) {
+            console.log("Đã vào phòng rồi");
+            clearInterval(loop);
+            afterJoin(doc);
+            return;
+        }
+
+        const rooms = doc.querySelectorAll(".room-item");
+
+        if (!rooms || rooms.length === 0) {
+            console.log("Chưa load danh sách phòng...");
+            return;
+        }
+
+        const isNumber = /^\d+$/.test(INPUT);
+
+        for (let room of rooms) {
+
+            const nameEl = room.querySelector(".room-item-name");
+            const metaEl = room.querySelector(".room-item-meta");
+            const btn = room.querySelector(".btn-join-room:not(.disabled)");
+
+            if (!btn) continue;
+
+            const name = nameEl?.innerText?.toLowerCase() || "";
+            const meta = metaEl?.innerText || "";
+
+            // lấy ID
+            const match = meta.match(/#(\d+)/);
+            const roomId = match ? match[1] : "";
+
+            console.log("Check:", name, "| ID:", roomId);
+
+            let isMatch = false;
+
+            if (isNumber) {
+
+                isMatch = roomId === INPUT;
+            } else {
+                isMatch = name.includes(INPUT);
+            }
+
+            if (isMatch) {
+                console.log("✅ VÀO ĐÚNG PHÒNG:", name, "| ID:", roomId);
+
+                btn.click();
+                clearInterval(loop);
+
+                const waitJoin = setInterval(() => {
+                    if (isInRoom(doc)) {
+                        console.log("✔ Đã vào phòng thành công");
+                        clearInterval(waitJoin);
+                        afterJoin(doc);
+                    }
+                }, 1000);
+
+                return;
+            }
+        }
+
+        console.log("❌ Không tìm thấy phòng phù hợp");
+
+    }, 1500);
+}
+    // ===== AFTER JOIN =====
+    function afterJoin(doc) {
+         autoStartSmart(doc)
+        autoReady(doc);
+        autoKick(doc);
+        autoNext(doc);
+        autoChest(doc);
+            autoAttack(doc);
     }
-  }
-  LV_SENT = info.sent;
-  LV_RECEIVED = info.received;
-  LV_AUTO_ACCEPT = info.autoAccept;
-  LV_NEED_JOIN = info.needJoin;
-  return info;
+function autoStartSmart(doc) {
+    const loop = setInterval(() => {
+
+        const players = [...doc.querySelectorAll(".player-card.filled")];
+
+        if (players.length !== 5) {
+            console.log("❌ Chưa đủ 5 người");
+            return;
+        }
+
+        let elements = new Set();
+        let okHP = true;
+
+        // ✅ CHECK NGŨ HÀNH + HP
+        players.forEach(p => {
+
+            const role = p.querySelector(".player-role")?.innerText.toLowerCase() || "";
+
+            if (role.includes("kim")) elements.add("kim");
+            if (role.includes("mộc")) elements.add("moc");
+            if (role.includes("thủy")) elements.add("thuy");
+            if (role.includes("hỏa")) elements.add("hoa");
+            if (role.includes("thổ")) elements.add("tho");
+
+            const hpText = p.querySelector(".player-power")?.innerText || "";
+            const hp = parseInt(hpText.replace(/\D/g, "")) || 0;
+
+            if (hp < 400000) okHP = false;
+        });
+
+        if (elements.size !== 5) {
+            console.log("❌ Thiếu ngũ hành:", elements);
+            return;
+        }
+
+        if (!okHP) {
+            console.log("❌ Có người HP < 400k");
+            return;
+        }
+
+        // 🔥 CHECK TẤT CẢ READY
+        const allReady = players.every(p =>
+            p.querySelector(".ready-badge.is-ready")
+        );
+
+        if (!allReady) {
+            console.log("❌ Chưa tất cả sẵn sàng");
+            return;
+        }
+
+        const btn = doc.querySelector("#btn-start");
+        if (!btn) return;
+
+        const btnText = btn.innerText.toLowerCase();
+        if (btnText.includes("bắt đầu") && isVisible(btn)) {
+
+            console.log("🚀 BẮT ĐẦU CHUẨN");
+
+            btn.click();
+
+            setTimeout(() => {
+                doc.querySelector(".confirm-btn-ok")?.click();
+            }, 500);
+
+            clearInterval(loop);
+        }
+
+    }, 1500);
 }
-/* ================== FETCH CORE ================== */
-async function lvFetch(url, body = {}) {
-  if (!LV_TOKEN) {
-    await ensureLvContext();
-  }
-  const resp = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "XMLHttpRequest",
-      "X-WP-Nonce": getWpNonce(),
-      "x-lv-token": LV_TOKEN
-    },
-    body: JSON.stringify(body)
-  });
-  const data = await resp.json();
-  const msg = extractLvMessage(data);
-  // ❌ token hết hạn / sai
-  if (msg.includes("token") || msg.includes("x-lv-token")) {
-    console.warn("[LV] token lỗi → refresh từ trang chủ");
-    LV_TOKEN = null;
-    await ensureLvContext();
-    return lvFetch(url, body);
-  }
-  return data;
-}
-/* ================== AUTO ACCEPT ================== */
-async function ensureAutoAccept() {
-  if (LV_AUTO_ACCEPT) {
-    showToast("👌 Tự động chấp nhận đã bật");
-    return;
-  }
-  const data = await lvFetch(LV_BASE + "/toggle-auto-accept", {});
-  if (data.success) {
-    showToast("✅ Đã bật Tự động chấp nhận");
-    LV_AUTO_ACCEPT = true;
-  } else {
-    showToast("❌ Không bật được Tự động chấp nhận");
-  }
-}
-/* ================== USERS ================== */
-const getFollowingUsers = (page = 1) =>
-  lvFetch(LV_BASE + "/get-following-users", { page });
-const getOnlineUsers = () =>
-  lvFetch(LV_BASE + "/online-users", {});
-/* ================== COMBAT ================== */
-async function autoApproveChallenge(challengeId, targetUserId) {
-  return lvFetch(LV_BASE + "/auto-approve-challenge", {
-    challenge_id: String(challengeId),
-    target_user_id: String(targetUserId)
-  });
-}
-    async function cancelChallenge(targetUserId, challengeId) {
-  return lvFetch(LV_BASE + "/cancel-challenge", {
-    target_user_id: String(targetUserId),
-    challenge_id: String(challengeId)
-  });
+function autoReady(doc) {
+    setInterval(() => {
+
+        const hint = doc.querySelector("#start-hint");
+        const btn = doc.querySelector("#btn-start");
+
+        if (!hint || !btn) return;
+
+        const hintText = hint.innerText.toLowerCase();
+        const btnText = btn.innerText.toLowerCase();
+
+        // ✅ chỉ bấm khi game yêu cầu "bấm sẵn sàng"
+        if (
+            hintText.includes("bấm sẵn sàng") &&   
+            btnText.includes("sẵn sàng") &&      
+            isVisible(btn)
+        ) {
+            console.log("✅ Bấm SẴN SÀNG ");
+            btn.click();
+        }
+
+    }, 1500);
 }
 
-    async function getSentChallengeIdByUser(targetUserId) {
-  const resp = await lvFetch(LV_BASE + "/get-sent-challenges", {});
-  if (!resp?.success || !resp?.data?.html) return null;
+    // ===== KICK =====
+function autoKick(doc) {
 
-  const html = resp.data.html;
-  const doc = new DOMParser().parseFromString(html, "text/html");
+    setInterval(async () => {
 
-  const btn = doc.querySelector(
-    `.reject-request[data-user-id="${String(targetUserId)}"]`
-  );
-  if (!btn) return null;
+        let WHITELIST = (localStorage.getItem("lv_ids") || "")
+            .split(",")
+            .map(x => x.trim())
+            .filter(x => x);
 
-  const cid = btn.getAttribute("data-challenge-id");
-  console.log("[LV] found sent challenge:", targetUserId, cid);
-  return cid || null;
+        let HP_LIMIT = parseInt(localStorage.getItem("lv_hp") || "0");
+
+        let players = [...doc.querySelectorAll(".player-card.filled")];
+
+        for (let p of players) {
+
+            const img = p.querySelector(".player-avatar img[src*='ultimatemember']");
+            const kick = p.querySelector(".btn-kick");
+
+            if (!kick) continue;
+
+            const id = img?.src.match(/ultimatemember\/(\d+)/)?.[1];
+
+            const powerText = p.querySelector(".player-power")?.innerText || "";
+            const hpMatch = powerText.match(/HP\s([\d\.]+)/);
+
+            let hp = 0;
+            if (hpMatch) {
+                hp = parseInt(hpMatch[1].replace(/\./g, ""));
+            }
+
+            console.log("Check:", id, "| HP:", hp);
+            // ===== LOGIC ƯU TIÊN =====
+            // 👉 Có ID → chỉ xét ID
+            if (WHITELIST.length > 0 && !HP_LIMIT) {
+                if (id && !WHITELIST.includes(id)) {
+                    console.log("❌ Kick theo ID:", id);
+                    kick.click();
+                    await new Promise(r => setTimeout(r, 500));
+                    doc.querySelector(".confirm-btn-ok")?.click();
+                    break;
+                }
+            }
+
+            // 👉 Không có ID → xét HP
+            else if (HP_LIMIT && WHITELIST.length === 0) {
+                if (hp < HP_LIMIT) {
+                    console.log("❌ Kick theo HP:", hp);
+                    kick.click();
+                    await new Promise(r => setTimeout(r, 500));
+                    doc.querySelector(".confirm-btn-ok")?.click();
+                    break;
+                }
+            }
+
+            // 👉 Có cả 2 → kết hợp
+            else if (WHITELIST.length > 0 && HP_LIMIT) {
+                if (
+                    (id && !WHITELIST.includes(id)) ||
+                    hp < HP_LIMIT
+                ) {
+                    console.log("❌ Kick theo ID + HP:", id, hp);
+                    kick.click();
+                    await new Promise(r => setTimeout(r, 500));
+                    doc.querySelector(".confirm-btn-ok")?.click();
+                    break;
+                }
+            }
+        }
+
+    }, 3000);
 }
+    // ===== NEXT =====
+    function autoNext(doc) {
+        setInterval(() => {
+            const btn = doc.querySelector("#btn-next-stage");
 
-async function challengeUser(userId, userName) {
-  const resp = await lvFetch(LV_BASE + "/send-challenge", {
-    target_user_id: String(userId)
-  });
-  const msg = extractLvMessage(resp);
-  // ❌ hết lượt mình
-  if (msg.includes("đã gửi tối đa")) {
-    showToast("🏁 Đã đủ 5/5 — dừng auto");
-    LV_RUNNING = false;
-    return;
-  }
-if (!resp.success) {
-  // Case: đã gửi khiêu chiến trước đó
-  if (msg.includes("đã gửi khiêu chiến")) {
-    showToast("♻️ Đã gửi trước đó → lấy danh sách để hủy");
+            if (isVisible(btn)) {
+                console.log("Qua ải");
+                btn.click();
+            }
 
-    const oldChallengeId = await getSentChallengeIdByUser(userId);
-    if (oldChallengeId) {
-      const cancel = await cancelChallenge(userId, oldChallengeId);
-      if (cancel?.success) {
-        showToast("✅ Đã hủy challenge cũ → gửi lại");
-        await new Promise(r => setTimeout(r, 800));
-        return challengeUser(userId, userName); // gửi lại
-      } else {
-        showToast("❌ Hủy challenge thất bại → bỏ target");
-        currentTarget = null;
-        return huntLuanVoTargets();
-      }
-    } else {
-      showToast("⚠️ Không tìm thấy challenge đã gửi → bỏ target");
-      currentTarget = null;
-      return huntLuanVoTargets();
+        }, 2500);
     }
-  }
 
-  // Các lỗi khác
-  showToast("❌ Gửi fail — làm lại");
-  currentTarget = null;
-  return huntLuanVoTargets();
-}
+    // ===== CHEST =====
+    function autoChest(doc) {
+        setInterval(() => {
+            const chest = doc.querySelector("#b5-chest-img");
 
-  const challengeId = resp.data?.challenge_id;
-  if (!challengeId) return;
-  showToast(`Gửi Khiêu chiến ${userName} còn(${LV_TARGET_LEFT}lượt)`);
-setTimeout(async () => {
-  try {
-    const result = await autoApproveChallenge(challengeId, userId);
-    if (result?.success) {
-      showToast(result.data?.message || "⚔️ Hoàn tất Luận Võ");
-      LV_SENT++;
-      LV_TARGET_LEFT--;
+            if (isVisible(chest)) {
+                console.log("Nhận rương");
+                chest.click();
+            }
+
+        }, 2500);
     }
-  } catch (e) {
-    showToast("❌ Lỗi nhận kết quả Luận Võ");
-  }
-  attackCurrentTarget();
-}, 4400);
-}
-/* ================== TARGET SCAN ================== */
-async function huntLuanVoTargets() {
-  if (!LV_RUNNING) return;
-  if (currentTarget) {
-    return attackCurrentTarget();
-  }
-  const res = await getFollowingUsers(1);
-  if (!res.success) {
-    showToast("❌ Không lấy được danh sách follow");
-    return;
-  }
-  const users = res.data?.users || [];
-  const target = users.find(u => Number(u.can_receive_count) > 0);
-  if (!target) {
-    showToast("⚠️ Follow full — chuyển ONLINE");
-    return huntFromOnline();
-  }
-  currentTarget = target;
-  // số lượt đánh = min(lượt mình còn, lượt nó nhận được)
-  LV_TARGET_LEFT = Math.min(
-    target.can_receive_count,
-    LV_MAX_BATTLES - LV_SENT
-  );
-  showToast(`🎯 Chọn ${target.name} còn(${LV_TARGET_LEFT}lượt)`);
-  attackCurrentTarget();
-}
-async function attackCurrentTarget() {
-  if (!LV_RUNNING) return;
-  // ✅ đủ 5 lượt → STOP
-  if (LV_SENT >= LV_MAX_BATTLES) {
-    showToast("🏁 Đã đủ 5/5 — dừng auto");
-    LV_RUNNING = false;
-    return;
-  }
-  // ❌ target hết lượt → chuyển online
-  if (LV_TARGET_LEFT <= 0) {
-    showToast("🔄 Target hết lượt — chuyển ONLINE");
-    currentTarget = null;
-    return huntFromOnline();
-  }
-  await challengeUser(currentTarget.id, currentTarget.name);
-}
-async function huntFromOnline() {
-  if (currentTarget) return attackCurrentTarget();
-  const res = await getOnlineUsers();
-  if (!res.success) return;
-  const users = res.data?.users || [];
-  const t = users.find(u => Number(u.challenges_remaining) > 0);
-  if (!t) {
-    showToast("😴 Online full — nghỉ 60s");
-    return setTimeout(huntLuanVoTargets, 60000);
-  }
-  currentTarget = t;
-  LV_TARGET_LEFT = Math.min(
-    t.challenges_remaining,
-    LV_MAX_BATTLES - LV_SENT
-  );
-  showToast(`⚔️ Online: ${t.name} còn(${LV_TARGET_LEFT}lượt)`);
-  attackCurrentTarget();
-}
-/* ================== MAIN ================== */
-async function runLuanVoAuto() {
-  try {
-      LV_RUNNING = true;
-    currentTarget = null;
-    LV_TARGET_LEFT = 0;
-    let info = await ensureLvContext();
-    showToast(`📊 Đã gửi: ${info.sent}/5 | Đã nhận: ${info.received}/5`);
-    if (info.needJoin) {
-      showToast("⚔️ Chưa tham gia Luận Võ — đang TG...");
-      const joined = await joinLuanVoBattle();
-      if (!joined) {
-        showToast("❌ Join thất bại — dừng auto");
-        return;
-      }
-      await new Promise(r => setTimeout(r, 1500));
-      info = await ensureLvContext();
-      if (info.needJoin) {
-        showToast("❌ Join chưa thành công — thử lại sau");
-        return;
-      }
-      showToast("✅ TG thành công — tiếp tục ");
-    }
-    if (info.sent >= LV_MAX_BATTLES) {
-      showToast("🏆 Hôm nay đã đủ 5/5");
-      return;
-    }
-    await ensureAutoAccept();
-    showToast("🔍 Bắt đầu auto Luận Võ...");
-    await huntLuanVoTargets();
-  } catch (e) {
-    showToast("❌ Lỗi Luận Võ: " + e.message);
-  }
+
+function autoAttack(doc) {
+    const loop = setInterval(() => {
+
+        const toggle = doc.querySelector("#auto-attack-toggle");
+        const track = doc.querySelector("#auto-attack-track");
+
+        if (!toggle || !track) return;
+
+        if (track.classList.contains("on")) {
+            console.log("✅ Auto attack đã bật");
+            clearInterval(loop);
+            return;
+        }
+
+        console.log("⚔️ Bật auto attack");
+        toggle.click();
+
+    }, 1500);
 }
 /* ================== BUTTON ================== */
 document.getElementById("btnLuanVo") ?.addEventListener("click", runLuanVoAuto);
@@ -4796,7 +4975,7 @@ async function buyRuongLB() {
   }
 }
 
-    
+
 // ===== BIẾN CHUNG =====
 let autoPhucLoiTimer = null;
 let iframe = null;
@@ -6239,7 +6418,7 @@ function stopAuto() {
   document.getElementById("akStop")?.classList.add("active");
   akLog("⏹ STOP auto");
 }
-                                     
+
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 // == AUTO THÍ LUYỆN  ==
 const TL_API = "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
@@ -6295,7 +6474,7 @@ async function autoThiLuyenSilent() {
       stopAutoThiLuyen("❌ Không lấy được security token");
       return;
     }
-      
+
     /* == CHECK THỜI GIAN == */
     const timeRes = await thiLuyenAjax(
       "get_remaining_time_tltm",
@@ -6340,13 +6519,13 @@ else {
     "warning"
   );
 }
-        
+
       const nextToken = await getSecurityToken(location.href);
       if (!nextToken) {
         stopAutoThiLuyen("❌ Không lấy được token sau khi mở");
         return;
       }
-                          
+
       const nextRes = await thiLuyenAjax(
         "get_remaining_time_tltm",
         nextToken
@@ -6395,7 +6574,7 @@ Headers.prototype.set = function(name, value) {
             },
             credentials: "include"
         });
-      
+
         const raw = await resp.text();
         try { return JSON.parse(raw); } catch { return { success: false, message: raw }; }
     }
@@ -6467,7 +6646,7 @@ let resp = await fetch(buildUrl("/wp-json/tong-mon/v1/claim-boss-reward"), {
     }
     return false;
 }
-          
+
 function showAttackResult(result) {
     if (!result || !result.success) return;
     let hpPercent = 0;
@@ -6478,14 +6657,14 @@ function showAttackResult(result) {
     if (result.message) {
         parts.push(result.message);
     }
- 
+
     if (result.boss_hp && result.boss_max_hp) {
         parts.push(`👹 ${result.boss_hp}/${result.boss_max_hp} (${hpPercent.toFixed(1)}%)`);
     }
     let msg = "🎯 " + parts.join(" | ");
     showToast(msg, 5000);
 }
-        
+
 let autoBiCanhTimer = null;
 async function autoBiCanh() {
     try {
@@ -6589,7 +6768,7 @@ async function autoBiCanh() {
         autoBiCanhTimer = setTimeout(autoBiCanh, 15000);
     }
 }
-              
+
 async function receiveLuanVoReward() {
   try {const info = await fetchLvPageInfo(); if (!info.hasReward) {
       showToast("🎁 Chưa có thưởng để nhận");
@@ -6637,7 +6816,7 @@ async function getFriendsList() {
         if (Array.isArray(data)) {
             return data;
         }
-                  
+
         if (data.success && Array.isArray(data.data)) {
             return data.data;
         }
@@ -6646,7 +6825,7 @@ async function getFriendsList() {
         return [];
     }
 }
-      
+
 const ACTIVITY_API = buildUrl("/wp-admin/admin-ajax.php");
 async function claimActivityReward(stage) {
   try {
@@ -6667,7 +6846,7 @@ async function claimActivityReward(stage) {
         security_token: securityToken
       })
     });
-              
+
     const data = await resp.json();
     if (data?.data?.message) {
       showToast(` ${data.data.message}`);
@@ -6747,7 +6926,7 @@ async function getBiCanhInfo(){
         message: d.message
       };
     }
-        
+
     return null;
   }catch(e){
     console.error("Lỗi API Bí Cảnh:", e);
@@ -6768,7 +6947,7 @@ function showPopup(contentHtml){
     justify-content:center;
     z-index:999999;
   `;
-        
+
   const box = document.createElement("div");
   box.style.cssText = `
     position:relative;
@@ -6972,7 +7151,7 @@ chests.forEach((chest, index) => {
     showToast("❌ Lỗi lấy tiến độ mới");
   }
 }
-      
+
 [toggleTL,toggleBC,toggleTD,togglePL,toggleHV].forEach(t=>t.checked=!1);["thiluyenToggle","biCanhToggle","tienDoToggle","phucloiToggle","hoangvucToggle"].forEach(k=>localStorage.setItem(k,"off"));
 toggleTL.onchange=()=>{const on=toggleTL.checked;localStorage.setItem("thiluyenToggle",on?"on":"off");if(on)autoThiLuyenSilent();else{localStorage.removeItem("nextRun_TL");stopAutoThiLuyen("🛑 Auto Thí Luyện đã tắt.")}};
 toggleBC.onchange = () => {const on = toggleBC.checked;localStorage.setItem("biCanhToggle", on ? "on" : "off");if (on) {showToast("Bí Cảnh đang được thực hiện...");autoBiCanh();} else {localStorage.removeItem("nextRun_BC");showToast("Đã tắt Bí Cảnh");}};
@@ -7071,6 +7250,9 @@ function createAutoMenu() {
   const ran = isAutoRanToday();
 
 box.innerHTML =
+    '<label style="font-size:12px;color:#aaa">⏳ Delay chạy auto (phút)</label>' +
+'<input id="autoDelay" type="number" min="0" placeholder="VD: 1" ' +
+'style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />' +
   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
   '<b style="color:#fff;font-size:14px">⚙ Cài đặt Tự Động</b>' +
   '<span id="closeAutoMenu" style="cursor:pointer;font-size:14px">✖</span>' +
@@ -7084,7 +7266,6 @@ makeRow("autoWedding","wedding","❤️ Phòng Cưới") +
 '<input id="weddingInterval" type="number" min="1" placeholder="số phút ktra" style="flex:1;padding:3px;background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:4px;">' +
 '</div>' +
 makeRow("autoDiemDanh","diemdanh","📅 Điểm danh+tế lễ vấn đáp") +
-makeRow("autoLuanVo","luanvo","🥋 Luận võ") +
 makeRow("autoPhucLoi","phucloi","🎁 Phúc Lợi") +
 makeRow("autoThiLuyen","thiluyen","⚔️ Thí Luyện") +
 makeRow("autoHoangVuc","hoangvuc","⛏️ Hoang Vực") +
@@ -7109,7 +7290,7 @@ makeRow("autoRuong","ruong","🛒 Mua Rương LB") +
 [
  "autoFlower","autoWish","autoTurns","autoRuong",
  "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu","autoWedding",
- "autoDiemDanh","autoLuanVo"
+ "autoDiemDanh"
 ].forEach(id=>{
     const el = box.querySelector("#"+id);
     if (!el) return;
@@ -7130,7 +7311,7 @@ toggleBtn.onclick = () => {
   const keys = [
     "autoFlower","autoWish","autoTurns","autoRuong",
     "autoPhucLoi","autoThiLuyen","autoHoangVuc","autoBiCanh","autoHapThu","autoWedding",
-    "autoDiemDanh","autoLuanVo"
+    "autoDiemDanh"
   ];
 
   const isAllChecked = keys.every(k => current[k]);
@@ -7170,7 +7351,15 @@ box.querySelector("#toggleAll").innerText =
 // load interval
 const intervalInput = box.querySelector("#weddingInterval");
 intervalInput.value = settings.weddingInterval || 15;
+// load delay
+const delayInput = box.querySelector("#autoDelay");
+delayInput.value = settings.autoDelay || 0;
 
+// save delay
+delayInput.onchange = () => {
+  settings.autoDelay = Math.max(0, parseInt(delayInput.value) || 0);
+  saveSettings(settings);
+};
 // save interval
 intervalInput.onchange = () => {
   settings.weddingInterval = Math.max(1, parseInt(intervalInput.value) || 15);
@@ -7191,7 +7380,7 @@ box.querySelector("#resetAutoRun").onclick = () => {
   [
     "phucloi","thiluyen","hoangvuc","bicanh","hapthu",
     "flower","wish","turns","ruong",
-    "diemdanh","luanvo"
+    "diemdanh"
   ].forEach(updateStatus);
 
 if (weddingTimer) {
@@ -7261,7 +7450,7 @@ async function showFriendPicker() {
         ${f.display_name}
       </label>`;
 
-    
+
   row.querySelector("input").onchange = (e) => {
   if (e.target.checked) {
     if (selected.length >= 5) {
@@ -7470,18 +7659,6 @@ function autoDiemDanhClick() {
   }, 800);
 }
 
-function autoLuanVoClick() {
-  if (!loadSettings().autoLuanVo || isDone("luanvo")) return;
-
-  console.log("🥋 Luận võ");
-
-  document.querySelector("#btnLuanVo")?.click();
-
-  setTimeout(() => {
-    markDone("luanvo");
-    updateStatus("luanvo");
-  }, 800);
-}
 // ===== RUN AUTO =====
 async function runAuto() {
   console.log("🚀 AUTO RUN");
@@ -7515,19 +7692,26 @@ async function runAuto() {
   autoTurns();
   await sleep(4000);
 
-  autoRuong();
-  await sleep(4000);
-
-  // ===== LUẬN VÕ CHẠY CUỐI =====
-  autoLuanVoClick();
+autoRuong();
+await sleep(4000);
 }
 function initAuto() {
   console.log("🚀 INIT AUTO");
 
-  setTimeout(runAuto, 3000);
+  const settings = loadSettings();
+  const delayMinutes = settings.autoDelay || 0;
 
+  // ✅ cưới chạy ngay (không delay)
+  startAutoWeddingLoop();
 
-  setTimeout(startAutoWeddingLoop, 5000);
+  // ✅ auto chính delay theo phút
+  const delayMs = delayMinutes * 60 * 1000;
+
+  console.log(`⏳ Delay auto: ${delayMinutes} phút`);
+
+  setTimeout(() => {
+    runAuto();
+  }, delayMs);
 }
 function waitForGameReady() {
   const check = setInterval(() => {
@@ -7661,7 +7845,7 @@ waitForGameReady();
     const s = document.getElementById(STYLE_ID);
     if (s) s.remove();
   }
- 
+
 function ensureButton() {
   const modal = document.querySelector(".modal-content");
   if (!modal) return;
@@ -7679,7 +7863,7 @@ function ensureButton() {
   cursor: pointer;font-size: 12px;font-weight: 500;letter-spacing: .4px;
   transition: all .25s ease;
 `;
-      
+
   btn.onmouseenter = () => {
     btn.style.background = "rgba(255,77,79,0.1)";
     btn.style.boxShadow = "0 0 10px rgba(255,77,79,.8)";
@@ -7688,7 +7872,7 @@ function ensureButton() {
     btn.style.background = "transparent";
     btn.style.boxShadow = "0 0 6px rgba(255,77,79,.4)";
   };
-          
+
   let on = false;
   btn.onclick = function () {
     on = !on;
@@ -7725,7 +7909,7 @@ ensureButton();
 }.flag-default,.flag-item-6,.flag-item-7 { display: none !important; }[class^="tong-cap-"] {display: none !important; } }`;
     document.head.appendChild(style);
   }
-      
+
   function removeFixStyle() {
     const s = document.getElementById(STYLE_ID);
     if (s) s.remove();
@@ -7863,7 +8047,7 @@ if (mMine?.[1]) {
           if (mineId) {
             KM_STATE.currentMineId = Number(mineId);
           }
-    
+
         }
       }
     } catch (e) {
@@ -8000,7 +8184,7 @@ function createFastAttackBtn(row) {
 
   row.appendChild(btn);
 }
-      
+
   function scanAndAttach() {
     const rows = document.querySelectorAll(".user-row, .user-item, [data-user-id]");
     rows.forEach(createFastAttackBtn);
@@ -8521,7 +8705,7 @@ const SCRIPT_URL =
 
 async function checkUpdate() {
 
-                              
+
     try {
 
         const res = await fetch(VERSION_URL);
@@ -8539,7 +8723,7 @@ async function checkUpdate() {
         console.log("Không check được update");
     }
 }
-            
+
 function showToast(message, showButton = false) {
     const toast = document.createElement("div");
     toast.style.position = "fixed";
@@ -8589,7 +8773,7 @@ const DATA_URL="https://raw.githubusercontent.com/hoathinh3d173820-coder/tuvi-da
 
 let TUVI_DATA={};
 let MY_TUVI=0;
- 
+
 
 // ===== LẤY TU VI BẢN THÂN =====
 function getMyTuvi(){
@@ -8602,7 +8786,7 @@ const txt=el.innerText;
 
 const num=txt.replace(/\D/g,"");
 
-        
+
 MY_TUVI=parseInt(num);
 
 console.log("Tu Vi bản thân:",MY_TUVI);
@@ -8641,14 +8825,14 @@ else if(ratio >= 3) per = 0.5;
 else if(ratio >= 2) per = 0.4;
 // % thay đổi
 const bonus = (diff / 1000) * per;
- 
+
 // tỉ lệ thắng
 const rate = 50 + bonus;
 
 return Math.round(rate);
 }
 
-            
+
 // ===== LẤY UID =====
 function getUserId(img){
 
@@ -8681,8 +8865,8 @@ if(!tuvi) return;
 const name=row.querySelector(".user-name");
 
 
-                        
-if(!name) return;  
+
+if(!name) return;
 
 const rate = calcWinRate(tuvi);
 
@@ -8703,7 +8887,7 @@ name.after(div);
 row.dataset.tuviInjected=true;
 });
 
-} 
+}
 // ===== RUN =====
 getMyTuvi();
 loadData();
@@ -8714,5 +8898,5 @@ setInterval(inject,1000);
 })();
 })();
 })();
-})();                                             
+})();
 })();
