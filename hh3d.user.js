@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.6
+// @version      2.7
 // @description  Cập nhật mê cung
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -1942,7 +1942,6 @@ btnReward.addEventListener("click", async () => {
     // ⏱️ chờ nhẹ
     await new Promise(r => setTimeout(r, 500));
     // 🥋 Nhận Luận Võ
-    await receiveLuanVoReward();
     await spinLottery();
     showToast("✅ Đã nhận hoạt động + Luận Võ+ Vòng Quay");
   } catch (e) {
@@ -1959,7 +1958,6 @@ document.getElementById("btnKhoang").addEventListener("click", showKhoangPopup);
 document.getElementById("btnDoThach").addEventListener("click", autoDoThachSilent);
 document.getElementById("btnSpin").addEventListener("click", spinLottery);
 document.getElementById("btnDiemDanh").addEventListener("click", async () => {await dailyCheckIn(); await doTeLe(); await autoQuiz();});
-document.getElementById("btnRewardLV").addEventListener("click", receiveLuanVoReward);
 document.getElementById("btnRuongLB").addEventListener("click", buyRuongLB);
 document.getElementById("btnFlower").addEventListener("click", async () => {
 let friends = await getFriendsList();
@@ -3587,14 +3585,17 @@ function autoJoin(doc) {
     }, 1500);
 }
     // ===== AFTER JOIN =====
-    function afterJoin(doc) {
-         autoStartSmart(doc)
-        autoReady(doc);
-        autoKick(doc);
-        autoNext(doc);
-        autoChest(doc);
-            autoAttack(doc);
-    }
+  function afterJoin(doc) {
+    autoStartSmart(doc);
+    autoReady(doc);
+    autoKick(doc);
+    autoNext(doc);
+    autoChest(doc);
+    autoAttack(doc);
+
+
+    autoBackLobby(doc);
+}
 function autoStartSmart(doc) {
     const loop = setInterval(() => {
 
@@ -3677,8 +3678,8 @@ function autoReady(doc) {
 
         // ✅ chỉ bấm khi game yêu cầu "bấm sẵn sàng"
         if (
-            hintText.includes("bấm sẵn sàng") &&   
-            btnText.includes("sẵn sàng") &&      
+            hintText.includes("bấm sẵn sàng") &&
+            btnText.includes("sẵn sàng") &&
             isVisible(btn)
         ) {
             console.log("✅ Bấm SẴN SÀNG ");
@@ -3785,7 +3786,35 @@ function autoKick(doc) {
 
         }, 2500);
     }
+function autoBackLobby(doc) {
 
+    let isWaiting = false;
+
+    setInterval(() => {
+
+        const btn = doc.querySelector(".btn-back-lobby");
+
+        if (!btn || isWaiting) return;
+
+        if (isVisible(btn)) {
+
+            console.log("🏁 Đã xong trận → chờ 15s quay về sảnh");
+
+            isWaiting = true;
+
+            setTimeout(() => {
+
+                console.log("↩️ Quay về sảnh");
+                btn.click();
+
+                // reset trạng thái sau khi reload
+                localStorage.setItem("lv_running", "1");
+
+            }, 15000);
+        }
+
+    }, 2000);
+}
 function autoAttack(doc) {
     const loop = setInterval(() => {
 
