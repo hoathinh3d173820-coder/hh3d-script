@@ -1942,8 +1942,7 @@ btnReward.addEventListener("click", async () => {
     await claimAllActivityRewards();
     // ⏱️ chờ nhẹ
     await new Promise(r => setTimeout(r, 500));
-    // 🥋 Nhận Luận Võ
-    await receiveLuanVoReward();
+
     await spinLottery();
     showToast("✅ Đã nhận hoạt động + Luận Võ+ Vòng Quay");
   } catch (e) {
