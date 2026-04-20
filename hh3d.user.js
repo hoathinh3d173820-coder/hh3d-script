@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      2.7
-// @description  Cập nhật mê cung
+// @version      2.9
+// @description  Cập nhật nhận hdhn
 // @match        *://*/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
@@ -16,6 +16,7 @@
 if (window.self !== window.top) {
     return;
 }
+const hh3d = typeof unsafeWindow !== "undefined" ? unsafeWindow.hh3dData : window.hh3dData;
 // ===== INIT AUTO KHOANG (GLOBAL) =====
 window.initAutoKhoang = function () {
   'use strict';
@@ -1942,6 +1943,7 @@ btnReward.addEventListener("click", async () => {
     // ⏱️ chờ nhẹ
     await new Promise(r => setTimeout(r, 500));
     // 🥋 Nhận Luận Võ
+    await receiveLuanVoReward();
     await spinLottery();
     showToast("✅ Đã nhận hoạt động + Luận Võ+ Vòng Quay");
   } catch (e) {
@@ -1958,6 +1960,114 @@ document.getElementById("btnKhoang").addEventListener("click", showKhoangPopup);
 document.getElementById("btnDoThach").addEventListener("click", autoDoThachSilent);
 document.getElementById("btnSpin").addEventListener("click", spinLottery);
 document.getElementById("btnDiemDanh").addEventListener("click", async () => {await dailyCheckIn(); await doTeLe(); await autoQuiz();});
+document.getElementById("btnRewardLV").addEventListener("click", async () => {
+
+    const PAGE_URL = "https://hoathinh3d.co/chuc-phuc-cuong-gia";
+    const AJAX_URL = "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
+
+    showToast("🚀 Bắt đầu chúc phúc...");
+
+    // ===== FETCH HTML =====
+    const res = await fetch(PAGE_URL, {
+        credentials: "include",
+        cache: "no-store"
+    });
+
+    const html = await res.text();
+
+    // ===== SECURITY =====
+    let SECURITY = null;
+
+    const patterns = [
+        /security["']?\s*[:=]\s*["']([a-z0-9]{6,})/i,
+        /["']security["']\s*,\s*["']([a-z0-9]{6,})/i,
+        /\b([a-f0-9]{8,12})\b/i
+    ];
+
+    for (let p of patterns) {
+        const match = html.match(p);
+        if (match) {
+            SECURITY = match[1] || match[0];
+            break;
+        }
+    }
+
+
+    // ===== HMAC (CHUẨN) =====
+    let HMAC = null;
+
+    const hmacMatch = html.match(/BP_HMAC\s*=\s*["']([a-f0-9]{64})["']/i);
+
+    if (hmacMatch) {
+        HMAC = hmacMatch[1];
+        localStorage.setItem("HH3D_HMAC", HMAC);
+    } else {
+        // fallback cache
+        HMAC = localStorage.getItem("HH3D_HMAC");
+    }
+
+
+    if (!SECURITY || !HMAC) {
+        showToast("❌ Thiếu token!");
+        return;
+    }
+
+// ===== PARSE HTML ĐỂ LẤY ID =====
+const parser = new DOMParser();
+const doc = parser.parseFromString(html, "text/html");
+
+const rows = doc.querySelectorAll(".bp-row");
+
+let ids = [];
+
+rows.forEach(row => {
+    const id = row.getAttribute("data-id");
+    const btn = row.querySelector(".bp-btn-bless");
+
+    // chưa chúc = không có class done
+    if (btn && !btn.classList.contains("done")) {
+        ids.push(id);
+    }
+});
+
+showToast("📌 Tìm thấy " + ids.length + " người");
+
+    // ===== LOOP =====
+    for (let id of ids) {
+        try {
+            const body = new URLSearchParams({
+                action: "bless_user",
+                blessed_id: id,
+                security: SECURITY,
+                hmac_token: HMAC
+            });
+
+            const r = await fetch(AJAX_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body,
+                credentials: "include"
+            });
+
+         const data = await r.json();
+
+// FIX đọc message
+const msg = data.message || data.data?.message || "???";
+
+showToast(`✅ ${msg}`);
+
+        } catch (e) {
+            showToast(`❌ Lỗi ID ${id}`);
+        }
+
+        await new Promise(r => setTimeout(r, 800));
+    }
+
+    showToast("🎉 Chúc phúc xong!");
+
+});
 document.getElementById("btnRuongLB").addEventListener("click", buyRuongLB);
 document.getElementById("btnFlower").addEventListener("click", async () => {
 let friends = await getFriendsList();
@@ -2913,48 +3023,54 @@ async function activateSeal() {
   await callPtApi("/wp-json/phap-tuong/v1/activate-seal", async (data) => {
 
     const msg = data?.message || "";
+    const turns = data?.remaining_turns ?? "?";
 
-    // ❌ LỖI THẬT
+    // ================= HẾT LƯỢT =================
+    if (turns === 0) {
+      showToast(`❌ Hết lượt khắc (${turns})`, "warn");
+      AUTO_SEAL = false;
+      isSealing = false;
+      return;
+    }
+
+    // ================= LỖI THẬT =================
     if (!data?.success && !data?.is_pity_failure) {
 
-      // HẾT LƯỢT
-if (msg.includes("không còn lượt")) {
-  showToast("❌ Hết lượt khắc", "warn");
-  AUTO_SEAL = false; // dừng auto luôn
-}
-
-      // ĐỦ 9 → TRIỆU HỒI
-      else if (msg.includes("đủ 9")) {
-        showToast("🎯 Đủ 9 → triệu hồi", "warn");
+      if (msg.includes("đủ 9")) {
+        showToast(`🎯 Đủ 9 → triệu hồi (${turns})`, "warn");
         await completeSummoning();
-      }
-
-      else {
-        showToast(msg || "❌ Khắc thất bại", false);
+      } else {
+        showToast(`❌ ${msg} (${turns})`, "warn");
       }
 
       isSealing = false;
-
       if (AUTO_SEAL) setTimeout(activateSeal, 300);
       return;
     }
 
-    // ⚠️ XỊT
+    // ================= PITY =================
     if (data?.is_pity_failure) {
-      showToast(msg || "🔸 Khắc thất bại (pity)", "warn");
+      const pity = data?.pity_data;
+
+      let pityText = "";
+      if (pity) {
+        pityText = ` (${pity.fail_count} xịt | +${pity.next_rate}%)`;
+      }
+
+      showToast(`🔸 ${msg}${pityText} (${turns})`, "warn");
     }
 
-    // ✅ THÀNH CÔNG
+    // ================= SUCCESS =================
     else {
-      showToast(msg || "✨ Khắc trận văn thành công!", true);
+      showToast(`✨ ${msg} (${turns})`, true);
     }
 
     await loadSealInfo();
 
     isSealing = false;
 
-    // 🔁 AUTO LOOP
-    if (AUTO_SEAL) setTimeout(activateSeal, 200);
+    // ================= AUTO LOOP =================
+    if (AUTO_SEAL) setTimeout(activateSeal, 400);
   });
 }
     document.getElementById("btnClaimTurns").onclick = claimDailyTurns;
@@ -3343,11 +3459,9 @@ function autoChucPhucScheduler() {
 setInterval(autoChucPhucScheduler, 30_000); // check mỗi 30s
 function runLuanVoAuto() {
 
-    // tránh mở trùng
     if (document.getElementById("luanvo_panel")) return;
 
     let IDS = localStorage.getItem("lv_ids") || "";
-
 
     const panel = document.createElement("div");
     panel.id = "luanvo_panel";
@@ -3366,71 +3480,74 @@ function runLuanVoAuto() {
         font-size:14px;
     `;
 
-
-
-panel.innerHTML = `
+    panel.innerHTML = `
 <h3 style="margin:0 0 10px;color:#00eaff">⚔️ MÊ CUNG </h3>
 
-<label style="font-size:12px;color:#aaa">ID user giữ lại không trục xuất</label>
+<label style="font-size:12px;color:#aaa">ID giữ lại</label>
 <input id="lv_id"
 value="${IDS}"
-placeholder="VD:1,3,9,1 k nhập sẽ ưu tiên HP"
-style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff" />
 
-<label style="font-size:12px;color:#aaa">HP tối thiểu để giữ lại</label>
+<label style="font-size:12px;color:#aaa">HP tối thiểu</label>
 <input id="lv_hp"
 value="${localStorage.getItem("lv_hp") || ""}"
-placeholder="VD: 400000"
-style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff" />
 
 <button id="lv_create"
-style="width:100%;margin-bottom:10px;background:#00eaff;color:#000;border:none;padding:7px;border-radius:6px;font-weight:bold">
+style="width:100%;margin-bottom:8px;background:#00eaff;color:#000;padding:7px;border-radius:6px">
 Lập đội
 </button>
 
-<label style="font-size:12px;color:#aaa">Tên hoặc mã phòng</label>
+<label style="font-size:12px;color:#aaa">Phòng</label>
 <input id="lv_name"
 value="${localStorage.getItem("lv_input") || ""}"
-placeholder="Nhập tên hoặc mã phòng"
-style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff" />
 
 <button id="lv_join"
-style="width:100%;background:#666;color:#fff;border:none;padding:7px;border-radius:6px">
+style="width:100%;background:#666;color:#fff;padding:7px;border-radius:6px">
 Vào phòng
 </button>
 
+<button id="lv_api"
+style="width:100%;margin-top:8px;background:#ff9800;color:#000;padding:7px;border-radius:6px;font-weight:bold">
+Đi bằng API
+</button>
+
 <button id="lv_close"
-style="width:100%;margin-top:10px;background:#ff4444;border:none;padding:6px;border-radius:6px;color:#fff">
+style="width:100%;margin-top:10px;background:#ff4444;color:#fff;padding:6px;border-radius:6px">
 Đóng
 </button>
 `;
+
     document.body.appendChild(panel);
 
-    // ===== SAVE =====
-    document.getElementById("lv_id").oninput = e => {
-        localStorage.setItem("lv_ids", e.target.value);
-    };
-document.getElementById("lv_hp").oninput = e => {
-    localStorage.setItem("lv_hp", e.target.value);
-};
-document.getElementById("lv_name").oninput = e => {
-    localStorage.setItem("lv_input", e.target.value);
-};
+    // ===== EVENTS (FIX CHÍNH) =====
+    setTimeout(() => {
 
-    // ===== BUTTON =====
-    document.getElementById("lv_create").onclick = () => {
-        openLuanVoIframe("create");
-    };
+        document.getElementById("lv_id").oninput = e =>
+            localStorage.setItem("lv_ids", e.target.value);
 
-    document.getElementById("lv_join").onclick = () => {
-        openLuanVoIframe("join");
-    };
+        document.getElementById("lv_hp").oninput = e =>
+            localStorage.setItem("lv_hp", e.target.value);
 
-    document.getElementById("lv_close").onclick = () => {
-        panel.remove();
-    };
+        document.getElementById("lv_name").oninput = e =>
+            localStorage.setItem("lv_input", e.target.value);
+
+        document.getElementById("lv_create").onclick = () =>
+            openLuanVoIframe("create");
+
+        document.getElementById("lv_join").onclick = () =>
+            openLuanVoIframe("join");
+
+        document.getElementById("lv_close").onclick = () =>
+            panel.remove();
+
+        // ✅ API BUTTON
+        document.getElementById("lv_api").onclick = () =>
+            openApiPopup();
+
+    }, 0);
 }
-
     // ===== CHECK =====
    function isInRoom(doc) {
     const panel = doc.querySelector("#room-panel");
@@ -3836,6 +3953,1104 @@ function autoAttack(doc) {
 }
 /* ================== BUTTON ================== */
 document.getElementById("btnLuanVo") ?.addEventListener("click", runLuanVoAuto);
+function openApiPopup() {
+
+    if (document.getElementById("lv_api_popup")) return;
+
+    // ================= STATE =================
+    let mode = {
+        host: false,
+        slave: false
+    };
+let joinedRoom = null;
+let lastRoomMsgId = 0;
+let usedChestTokens = new Set();
+    let hostRunning = false;
+    let hostLoop = null;
+let myUserId = null;
+    let slaveRunning = false;
+    let slaveLoop = null;
+let lastChestMsgId = 0;
+    let realToken = null;
+    let realNonce = null;
+    let currentRoom = null;
+    let lastStatusHash = "";
+    // ================= POPUP =================
+    const popup = document.createElement("div");
+    popup.id = "lv_api_popup";
+
+    popup.style = `
+        position:fixed;
+        inset:0;
+        background:rgba(0,0,0,0.6);
+        z-index:999999;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+    `;
+
+    popup.innerHTML = `
+    <div style="
+        background:#1e1e1e;
+        padding:18px;
+        border-radius:12px;
+        width:360px;
+        color:#fff;
+        font-size:14px;
+        box-shadow:0 0 20px rgba(0,0,0,0.8);
+    ">
+
+        <h3 style="margin:0 0 12px;color:#00eaff;text-align:center">
+            API MÊ CUNG
+        </h3>
+
+<label>ID phòng chat</label>
+<input id="api_room"
+    placeholder="Nhập ID chat"
+    style="width:100%;margin:6px 0 12px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />
+
+<div style="display:flex;gap:8px;margin-bottom:10px;">
+
+    <button id="btn_host"
+    style="flex:1;padding:8px;border:none;border-radius:6px;background:#444;color:#fff">
+        Chủ KEY OFF
+    </button>
+
+    <button id="btn_slave"
+    style="flex:1;padding:8px;border:none;border-radius:6px;background:#444;color:#fff">
+        Đi KÉ OFF
+    </button>
+
+</div>
+
+<div id="api_log"
+style="
+    height:280px;
+    overflow:auto;
+    background:#000;
+    border:1px solid #333;
+    padding:8px;
+    border-radius:6px;
+    font-size:12px;
+    line-height:1.4;
+    white-space:pre-line;
+    word-break: break-word;
+    scroll-behavior: smooth;
+">
+</div>
+
+<button id="api_close"
+style="width:100%;margin-top:10px;background:#ff4444;color:#fff;padding:8px;border:none;border-radius:6px">
+    ĐÓNG
+</button>
+
+    </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    const logBox = document.getElementById("api_log");
+    const roomInput = document.getElementById("api_room");
+
+    // ================= LOG =================
+    function log(text) {
+        const time = new Date().toLocaleTimeString();
+        const div = document.createElement("div");
+        div.innerText = `[${time}] ${text}`;
+        logBox.appendChild(div);
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+  roomInput.value = localStorage.getItem(STORAGE_KEY) || "";
+
+    roomInput.addEventListener("input", () => {
+        localStorage.setItem(STORAGE_KEY, roomInput.value.trim());
+    });
+    // ================= FETCH TOKEN =================
+async function fetchToken() {
+
+    const res = await fetch("/me-cung", {
+        credentials: "include",
+        cache: "no-store"
+    });
+
+    const html = await res.text();
+
+    const tokenMatch = html.match(/x-mc-action-token["']?\s*[:=]\s*["']([^"']+)/i);
+    const tokenMatch2 = html.match(/([A-Za-z0-9+/=]{80,})/);
+
+    realToken = tokenMatch?.[1] || tokenMatch2?.[1];
+
+    const nonceMatch = html.match(/nonce["']?\s*:\s*["']([^"']+)/i);
+    realNonce = nonceMatch?.[1] || res.headers.get("x-wp-nonce");
+
+    // ================= FIX QUAN TRỌNG =================
+    if (!realToken || realToken.length < 20) realToken = null;
+    if (!realNonce || realNonce.length < 10) realNonce = null;
+
+    // ================= LOG =================
+    log("TOKEN: " + realToken);
+    log("NONCE: " + realNonce);
+
+    // ================= RESULT =================
+    if (!realToken || !realNonce) {
+        log("❌ thiếu token");
+        return false;
+    }
+
+    log("✅ lấy token thành công");
+    return true;
+}
+// ================= THREAD =================
+function getThreadId() {
+    return document.getElementById("api_room")?.value?.trim() || null;
+}
+async function checkChestFromChat() {
+
+    const messages = await readChat();
+    if (!messages?.length) return;
+
+    const myId = getMyUserIdFromDOM();
+    if (!myId) return;
+
+    for (let msg of messages) {
+
+        if (msg.message_id <= lastChestMsgId) continue;
+        lastChestMsgId = msg.message_id;
+
+        const text = msg.message || "";
+
+        if (!text.startsWith("CHEST|")) continue;
+
+        const parts = text.split("|");
+
+        const room = parts[1];
+        const raw = parts[2];
+
+        if (!room || !raw) continue;
+
+        const list = raw.split(",");
+
+        for (let item of list) {
+
+            const [uid, token] = item.split(":");
+
+            if (!uid || !token) continue;
+
+            if (usedChestTokens.has(token)) continue;
+
+            if (parseInt(uid) === parseInt(myId)) {
+
+                usedChestTokens.add(token);
+
+                showToast("🎁 Đang mở rương...", true);
+
+                await claimChest(room, token);
+                return;
+            }
+        }
+    }
+}
+// ================= SEND CHAT =================
+async function sendChat(message) {
+
+    const threadId = getThreadId();
+    if (!threadId) {
+        log("❌ chưa nhập ID chat");
+        return false;
+    }
+
+    if (!realNonce) {
+        const ok = await fetchToken();
+        if (!ok) return false;
+    }
+
+    try {
+        const res = await fetch(`/wp-json/better-messages/v1/thread/${threadId}/send?nocache=${Date.now()}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-WP-Nonce": realNonce
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                message,
+                temp_id: "tmp_" + Date.now()
+            })
+        });
+
+        return await res.json();
+
+    } catch (e) {
+        log("❌ send chat lỗi");
+        return false;
+    }
+}
+
+// ================= READ CHAT =================
+async function readChat() {
+
+    const threadId = getThreadId();
+    if (!threadId) {
+        log("❌ chưa nhập ID chat");
+        return [];
+    }
+
+    if (!realNonce) {
+        const ok = await fetchToken();
+        if (!ok) return [];
+    }
+
+    try {
+        const res = await fetch(
+            `/wp-json/better-messages/v1/thread/${threadId}?nocache=${Date.now()}`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-WP-Nonce": realNonce
+                },
+                credentials: "include",
+                body: JSON.stringify({ messages: [] })
+            }
+        );
+
+        const data = await res.json();
+
+        if (!data || data.code || !data.messages) {
+            log("⚠️ chat lỗi");
+            return [];
+        }
+
+        return data.messages;
+
+    } catch (e) {
+        log("❌ read chat lỗi");
+        return [];
+    }
+}
+async function joinRoomByToken(token, roomCode) {
+
+    if (joinedRoom === roomCode) {
+        log("⚠️ đã ở phòng này rồi");
+        return;
+    }
+
+    const ok = await fetchToken();
+    if (!ok) return;
+
+    try {
+        const res = await fetch("/wp-json/me-cung/v1/join-by-invite", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-mc-action-token": realToken,
+                "X-WP-Nonce": realNonce
+            },
+            credentials: "include",
+            body: JSON.stringify({ token })
+        });
+
+        const data = await res.json();
+
+        if (data?.success) {
+            joinedRoom = data.room_code;
+            log("✅ JOIN ROOM: " + joinedRoom);
+        } else {
+            log("❌ join fail");
+        }
+
+    } catch (e) {
+        log("❌ join error");
+    }
+}
+ // ================= SLAVE =================
+let lastMsgId = 0;
+let lastReadyTime = 0;
+async function startSlave() {
+
+    if (slaveRunning) return;
+    slaveRunning = true;
+
+    log("🤖 SLAVE (ANTI THROTTLE)");
+
+    const ok = await fetchToken();
+    if (!ok) return;
+
+    const myId = getMyUserIdFromDOM();
+    if (!myId) {
+        log("❌ không lấy được user id");
+        return;
+    }
+
+    let currentRoomLocal = null;
+
+    while (slaveRunning) {
+
+        const loopStart = Date.now();
+
+        try {
+
+            // ================= 1. CHECK STATUS =================
+            const status = await getUserStatus();
+
+            if (status?.in_room) {
+
+                currentRoomLocal = status.room_code;
+
+                if (status.status === "waiting") {
+
+                    const me = status.members.find(m => m.user_id == myId);
+
+                    if (me && me.is_ready == 0) {
+
+                        if (Date.now() - lastReadyTime > 5000) {
+
+                            log("⚡ AUTO READY");
+
+                            lastReadyTime = Date.now();
+
+                            await readyRoom();
+                        }
+                    }
+                }
+
+            } else {
+                currentRoomLocal = null;
+            }
+
+            // ================= 2. READ CHAT =================
+            const messages = await readChat();
+            if (!messages?.length) {
+                await delaySmart(loopStart);
+                continue;
+            }
+
+            for (let msg of messages) {
+
+                const text = msg.message || "";
+
+                // ================= ROOM =================
+                if (!currentRoomLocal && text.startsWith("ROOM|")) {
+
+                    if (msg.message_id <= lastMsgId) continue;
+                    lastMsgId = msg.message_id;
+
+                    const [_, roomCode, token] = text.split("|");
+
+                    if (!roomCode || !token) continue;
+
+                    log("📥 ROOM: " + roomCode);
+
+                    await joinRoomByToken(token, roomCode);
+
+                    currentRoomLocal = roomCode;
+                    continue;
+                }
+
+                // ================= CHEST =================
+                if (text.startsWith("CHEST|")) {
+
+                    const [_, room, raw] = text.split("|");
+
+                    if (!room || !raw) continue;
+                    if (currentRoomLocal && room !== currentRoomLocal) continue;
+
+                    const list = raw.split(",");
+
+                    for (let item of list) {
+
+                        const [uid, token] = item.split(":");
+
+                        if (!uid || !token) continue;
+                        if (usedChestTokens.has(token)) continue;
+
+                        if (parseInt(uid) === myId) {
+
+                            usedChestTokens.add(token);
+
+                            log("🎁 mở rương của mình");
+
+                            showToast("🎁 Đang mở rương...", true);
+
+                            log("⏳ chờ 6s mở rương (slave)");
+
+                            await sleepAccurate(6000); // 🔥 fix delay
+
+                            await claimChest(room, token);
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+        } catch (e) {
+            log("❌ slave loop error");
+        }
+
+        await delaySmart(loopStart);
+    }
+}
+    function delaySmart(startTime) {
+
+    const delay = getSlaveDelay ? getSlaveDelay() : 20000;
+
+    const elapsed = Date.now() - startTime;
+
+    const wait = Math.max(0, delay - elapsed);
+
+    return sleepAccurate(wait);
+}
+    async function sleepAccurate(ms) {
+
+    const start = Date.now();
+
+    while (Date.now() - start < ms) {
+        await new Promise(r => setTimeout(r, 200));
+    }
+}
+    function getSlaveDelay() {
+    const el = document.getElementById("api_delay_slave");
+    if (!el) return 20000; // fallback 20s
+
+    const val = parseFloat(el.value);
+    if (isNaN(val)) return 20000;
+
+    return Math.max(5000, val * 1000); // tối thiểu 5s
+}
+async function claimChest(roomCode, token, retry = 0) {
+
+    if (!realNonce) {
+        const ok = await fetchToken();
+        if (!ok) return;
+    }
+
+    try {
+
+        const res = await fetch("/wp-json/me-cung/v1/claim-boss5-chest", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-WP-Nonce": realNonce
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                room_code: roomCode,
+                chest_token: token
+            })
+        });
+
+        const data = await res.json();
+
+        console.log("🎁 CHEST DATA:", data);
+
+// ================= SUCCESS =================
+if (data?.success) {
+
+    const r = data.reward || {};
+
+    // 👉 FIX CHUẨN (fallback nhiều nguồn)
+    const gained = data.huyen_tinh ?? r.huyen_tinh ?? 0;
+    const total = data.huyen_tinh_daily_total ?? r.huyen_tinh_daily_total ?? 0;
+    const cap = data.huyen_tinh_daily_cap ?? r.huyen_tinh_daily_cap ?? 0;
+
+    const tuVi = r.tu_vi || 0;
+    const tinhThach = r.tinh_thach || 0;
+    const tienNgoc = r.tien_ngoc || 0;
+    const xuKhoa = r.xu_khoa || 0;
+
+    const label = r.label || "Rương";
+
+    let text = `🎁 ${label}\n`;
+
+    if (tuVi) text += `💠 Tu Vi: +${tuVi}\n`;
+    if (tinhThach) text += `🔮 Tinh Thạch: +${tinhThach}\n`;
+    if (tienNgoc) text += `💎 Tiên Ngọc: +${tienNgoc}\n`;
+    if (xuKhoa) text += `🪙 Xu Khóa: +${xuKhoa}\n`;
+
+    text += `✨ +${gained} Huyền Tinh\n`;
+    text += `📊 Hôm nay: ${total}/${cap}`;
+
+    if (data.already_got_items) {
+        text += `\n⚠️ Đã nhận trước đó`;
+    }
+
+    if (cap && total >= cap) {
+        text += `\n🚫 Đã đạt giới hạn hôm nay`;
+    }
+
+    log(text);
+
+    showToast(`🎁 +${gained} HT (${total}/${cap})`, true);
+
+    return true;
+}
+        // ================= TOO SOON (AUTO RETRY) =================
+        if (data?.code === "too_soon") {
+
+            const wait = (data.seconds_left || 2) * 1000;
+
+            log(`⏳ bị delay → retry sau ${wait / 1000}s`);
+
+            if (retry < 5) {
+                await sleep(wait + 200); // buffer nhẹ
+                return await claimChest(roomCode, token, retry + 1);
+            } else {
+                log("❌ retry quá 5 lần, bỏ");
+                return false;
+            }
+        }
+
+        // ================= FAIL =================
+        log("❌ nhận rương fail: " + (data?.message || ""));
+        showToast(data?.message || "❌ Fail", "warn");
+
+        return false;
+
+    } catch (e) {
+
+        log("❌ lỗi mạng, retry...");
+
+        if (retry < 5) {
+            await sleep(1500);
+            return await claimChest(roomCode, token, retry + 1);
+        }
+
+        showToast("❌ Lỗi mạng", "warn");
+        return false;
+    }
+}
+    async function readyRoom() {
+
+    if (!currentRoom) {
+        log("❌ chưa có room");
+        return null;
+    }
+
+
+    if (!realToken || !realNonce) {
+        log("❌ thiếu token");
+        return null;
+    }
+
+    try {
+
+        const res = await fetch("/wp-json/me-cung/v1/ready", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-mc-action-token": realToken,
+                "X-WP-Nonce": realNonce
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                room_code: currentRoom,
+                is_ready: 1
+            })
+        });
+
+        const data = await res.json();
+
+        if (data?.success) {
+            log("✅ READY");
+        } else {
+            log("❌ READY fail: " + (data?.message || ""));
+        }
+
+        return data;
+
+    } catch (e) {
+        log("❌ READY error");
+        return null;
+    }
+}
+function getMyUserIdFromDOM() {
+
+    if (myUserId) return myUserId;
+
+    const a = document.querySelector('a[href*="/profile/"]');
+    if (!a) return null;
+
+    const match = a.href.match(/\/profile\/(\d+)/);
+    if (!match) return null;
+
+    myUserId = parseInt(match[1]);
+
+    log("👤 MY ID: " + myUserId);
+
+    return myUserId;
+}
+// ================= STATUS =================
+async function getUserStatus() {
+
+    if (!realNonce) {
+        const ok = await fetchToken();
+        if (!ok) return null;
+    }
+
+    try {
+
+        const res = await fetch("/wp-json/me-cung/v1/user-status", {
+            method: "GET",
+            headers: { "X-WP-Nonce": realNonce },
+            credentials: "include"
+        });
+
+        const data = await res.json();
+        if (!data) return null;
+
+        // ================= NORMALIZE =================
+        const status = {
+            in_room: data.in_room,
+            room_code: data.room_code,
+            status: data.status,
+            current_stage: data.current_stage,
+            boss: data.boss || null,
+            members: Array.isArray(data.members) ? data.members : [],
+            expired: data.expired || false
+        };
+
+        // ================= LOG HASH =================
+        const hash = JSON.stringify({
+            room: status.room_code,
+            status: status.status,
+            stage: status.current_stage,
+            ready: status.members.filter(m => m.is_ready == 1).length,
+            boss: !!status.boss
+        });
+
+        if (hash !== lastStatusHash) {
+
+            lastStatusHash = hash;
+
+            const readyCount = status.members.filter(m => m.is_ready == 1).length;
+            const nguHanhCount = [...new Set(
+                status.members
+                    .filter(m => m.is_ready == 1)
+                    .map(m => m.ngu_hanh)
+            )].length;
+
+            log(
+                `🏠 room:${status.room_code} | ` +
+                `${status.status} | stage:${status.current_stage} | ` +
+                `ready:${readyCount}/5 | hệ:${nguHanhCount}/5`
+            );
+        }
+
+        currentRoom = status.room_code;
+
+        // ================= AUTO CHEST LOGIC =================
+        const boss = status.boss;
+
+        const now = Date.now();
+
+
+
+        return status;
+
+    } catch (e) {
+        log("❌ getUserStatus lỗi");
+        return null;
+    }
+}
+
+// ================= ENSURE ROOM =================
+async function ensureRoom() {
+
+    const status = await getUserStatus();
+    if (!status) return;
+
+    if (!status.in_room && status.expired) {
+        log("🚪 chưa vào room + expired → tạo phòng mới");
+        await createRoom();
+    }
+}
+
+// ================= CREATE ROOM =================
+async function createRoom() {
+
+    const ok = await fetchToken();
+    if (!ok) return;
+
+    const res = await fetch("/wp-json/me-cung/v1/create-room", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "x-mc-action-token": realToken,
+            "X-WP-Nonce": realNonce
+        },
+        credentials: "include",
+        body: "{}"
+    });
+
+    const data = await res.json();
+    log("CREATE", data);
+
+    if (!data?.success) {
+        log("❌ create fail");
+        return;
+    }
+
+    currentRoom = data.room_code;
+    log("✅ ROOM: " + currentRoom);
+
+    await lockRoom(currentRoom);
+}
+
+// ================= LOCK ROOM =================
+let lastSentRoom = null;
+
+async function lockRoom(roomCode) {
+
+    const res = await fetch("/wp-json/me-cung/v1/toggle-room-lock", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "x-mc-action-token": realToken,
+            "X-WP-Nonce": realNonce
+        },
+        credentials: "include",
+        body: JSON.stringify({ room_code: roomCode })
+    });
+
+    const data = await res.json();
+    log("LOCK", data);
+
+    if (!data?.success) return;
+
+    const inviteToken = data.token;
+    if (!inviteToken) return;
+
+    if (lastSentRoom === roomCode) {
+        log("⚠️ ROOM đã gửi rồi");
+        return;
+    }
+
+    const ok = await sendChat(`ROOM|${roomCode}|${inviteToken}`);
+
+    if (ok !== false) {
+        lastSentRoom = roomCode;
+        currentRoom = roomCode;
+        log("📡 broadcast ROOM");
+    }
+}
+let isStartingRoom = false;
+
+async function startRoom() {
+
+    if (!currentRoom) {
+        log("❌ chưa có room");
+        return false;
+    }
+
+    if (isStartingRoom) return false;
+    isStartingRoom = true;
+
+    try {
+
+        const res = await fetch("/wp-json/me-cung/v1/start", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-mc-action-token": realToken,
+                "X-WP-Nonce": realNonce
+            },
+            credentials: "include",
+            body: JSON.stringify({ room_code: currentRoom })
+        });
+
+        const data = await res.json();
+        log("START", data);
+
+        if (data?.success) {
+            log("⚔️ boss: " + data.boss?.name);
+            isStartingRoom = false;
+            return true;
+        }
+
+        log("❌ start fail");
+        isStartingRoom = false;
+        return false;
+
+    } catch (e) {
+        log("❌ start error");
+        isStartingRoom = false;
+        return false;
+    }
+}
+let isAttacking = false;
+let lastAttackLine = null;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function attack() {
+
+    if (!currentRoom) return null;
+    if (isAttacking) return null;
+
+    isAttacking = true;
+
+    try {
+
+        const res = await fetch("/wp-json/me-cung/v1/attack", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-mc-action-token": realToken,
+                "X-WP-Nonce": realNonce
+            },
+            credentials: "include",
+            body: JSON.stringify({ room_code: currentRoom })
+        });
+
+        const data = await res.json();
+
+        // ================= HỒI CHIÊU =================
+        if (data?.success === false && data?.message?.includes("Hồi chiêu")) {
+
+            log("⏳ Hồi chiêu → retry sau 1s");
+
+            isAttacking = false;
+
+            await sleep(1000);
+
+            return null; // ✅ QUAN TRỌNG: không tự gọi lại
+        }
+
+        if (!data?.success) {
+            log("❌ attack fail");
+            isAttacking = false;
+            return null;
+        }
+
+        const boss = data.boss;
+
+        // ================= BUILD LOG =================
+        let text = "";
+
+        if (boss) {
+            text += `👹 STAGE ${boss.stage} - ${boss.name} (${boss.hp}/${boss.hp_max})\n`;
+        }
+
+        data.hits?.forEach(h => {
+            text += `- ${h.display_name}: ${h.dmg}${h.crit ? " 💢" : ""}\n`;
+        });
+
+if (data.boss_dead) {
+
+    log("🏆 BOSS DIE");
+
+    const tokens = data.chest_tokens;
+    const room = currentRoom;
+
+    if (tokens && room) {
+
+        // 👉 build chuỗi uid:token,uid:token
+        const list = Object.entries(tokens)
+            .map(([uid, token]) => `${uid}:${token}`)
+            .join(",");
+
+        const msg = `CHEST|${room}|${list}`;
+
+        // 👉 HOST tự mở rương luôn
+        const myId = getMyUserIdFromDOM();
+     if (tokens[myId]) {
+
+    log("⏳ chờ 6s mở rương (host)");
+
+    await sleep(6000);
+
+    await claimChest(room, tokens[myId]);
+}
+        // 👉 gửi 1 tin duy nhất
+        await sendChat(msg);
+
+        log("📤 Đã gửi FULL CHEST TOKEN");
+    }
+
+    currentRoom = null;
+}
+        // ================= OVERWRITE LOG =================
+        const logBox = document.getElementById("api_log");
+
+        if (lastAttackLine) lastAttackLine.remove();
+
+        lastAttackLine = document.createElement("div");
+        lastAttackLine.innerText = text;
+
+        logBox.appendChild(lastAttackLine);
+        logBox.scrollTop = logBox.scrollHeight;
+
+        isAttacking = false;
+        return data;
+
+    } catch (e) {
+        log("❌ attack error");
+        isAttacking = false;
+        return null;
+    }
+}
+// ================= HOST =================
+async function startHost() {
+
+    if (hostRunning) return;
+    hostRunning = true;
+
+    log("🚀 HOST (ANTI THROTTLE)");
+
+    const ok = await fetchToken();
+    if (!ok) return;
+
+    while (hostRunning) {
+
+        const loopStart = Date.now();
+
+        try {
+
+            const status = await getUserStatus();
+            if (!status) {
+                await delayHost(loopStart);
+                continue;
+            }
+
+            // ================= ROOM CHECK =================
+            if (!status.in_room || status.expired) {
+
+                log("🚪 chưa vào phòng → tạo room");
+
+                await createRoom();
+                await sleepAccurate(2500);
+
+                await delayHost(loopStart);
+                continue;
+            }
+
+            const members = status.members || [];
+            const boss = status.boss;
+
+            const readyMembers = members.filter(m => m.is_ready == 1);
+            const readyCount = readyMembers.length;
+
+            const uniqueElements = [...new Set(
+                readyMembers.map(m => m.ngu_hanh)
+            )];
+
+            // ================= WAITING =================
+            if (status.status === "waiting" && !boss) {
+
+                if (readyCount >= 5 && uniqueElements.length >= 5) {
+
+                    log("🚀 đủ điều kiện → START");
+
+                    await startRoom();
+                    await sleepAccurate(2500);
+                }
+            }
+
+            // ================= BATTLE =================
+            if (status.status === "battle" && boss) {
+
+                if (!isAttacking) {
+                    const result = await attack();
+
+                    if (result?.boss_dead) {
+                        log("🏆 boss chết");
+                        currentRoom = null;
+                    }
+                }
+            }
+
+        } catch (e) {
+            log("❌ host error");
+        }
+
+        await delayHost(loopStart);
+    }
+}
+    function getHostDelay() {
+    const el = document.getElementById("api_delay_host");
+    if (!el) return 3500;
+
+    const val = parseFloat(el.value);
+    if (isNaN(val)) return 3500;
+
+    return Math.max(1000, val * 1000);
+}
+    function delayHost(startTime) {
+
+    const delay = getHostDelay();
+
+    const elapsed = Date.now() - startTime;
+
+    const wait = Math.max(0, delay - elapsed);
+
+    return sleepAccurate(wait);
+}
+function stopHost() {
+    hostRunning = false;
+    log("⏹ HOST STOP");
+}
+
+function stopSlave() {
+    slaveRunning = false;
+    clearInterval(slaveLoop);
+    slaveLoop = null;
+    log("⏹ SLAVE STOP");
+}
+    // ================= EVENTS =================
+    const btnHost = document.getElementById("btn_host");
+    const btnSlave = document.getElementById("btn_slave");
+
+    btnHost.onclick = () => {
+
+        mode.host = !mode.host;
+
+        btnHost.innerText = mode.host ? "Chủ KEY ON" : "Chủ KEY OFF";
+        btnHost.style.background = mode.host ? "#00eaff" : "#444";
+
+        if (mode.host) {
+            mode.slave = false;
+            btnSlave.innerText = "Đi KÉ OFF";
+            btnSlave.style.background = "#444";
+            stopSlave();
+            startHost();
+        } else {
+            stopHost();
+        }
+
+        log("HOST: " + mode.host);
+    };
+
+    btnSlave.onclick = () => {
+
+        mode.slave = !mode.slave;
+
+        btnSlave.innerText = mode.slave ? "Đi KÉ ON" : "Đi KÉ OFF";
+        btnSlave.style.background = mode.slave ? "#ff9800" : "#444";
+
+        if (mode.slave) {
+            mode.host = false;
+            btnHost.innerText = "Chủ KEY OFF";
+            btnHost.style.background = "#444";
+            stopHost();
+            startSlave();
+        } else {
+            stopSlave();
+        }
+
+        log("SLAVE: " + mode.slave);
+    };
+
+    document.getElementById("api_close").onclick = () => {
+        stopHost();
+        stopSlave();
+        popup.remove();
+    };
+
+    roomInput.addEventListener("input", () => {
+        log("ROOM: " + roomInput.value.trim());
+    });
+}
 //=Đổ thạch
 async function autoDoThachWithRetry(maxRetry = 10, delayMs = 10_000) {
   for (let attempt = 1; attempt <= maxRetry; attempt++) {
@@ -6798,37 +8013,6 @@ async function autoBiCanh() {
     }
 }
 
-async function receiveLuanVoReward() {
-  try {const info = await fetchLvPageInfo(); if (!info.hasReward) {
-      showToast("🎁 Chưa có thưởng để nhận");
-      return;
-    }
-    const securityToken = await getSecurityToken(location.href);
-    if (!securityToken) {
-      showToast("❌ Không lấy được security token");
-      return;
-    }
-    const resp = await fetch(LV_BASE + "/receive-reward", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-WP-Nonce": getWpNonce(),
-        "x-lv-token": securityToken
-      },
-      body: "{}"
-    });
-    const data = await resp.json();
-    let msg =
-      data?.data?.message ||
-      data?.message ||
-      JSON.stringify(data, null, 2);
-    showToast(msg);
-  } catch (e) {
-    showToast("❌ Lỗi nhận thưởng: " + e.message);
-  }
-}
 const GIFT_API = buildUrl("/wp-json/hh3d/v1/action");
 async function getFriendsList() {
     try {
@@ -6855,14 +8039,28 @@ async function getFriendsList() {
     }
 }
 
-const ACTIVITY_API = buildUrl("/wp-admin/admin-ajax.php");
+const ACTIVITY_API = "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
+
 async function claimActivityReward(stage) {
   try {
-    const securityToken = await getSecurityToken(location.href);
-    if (!securityToken) {
-      showToast("❌ Không lấy được security token");
+    const data = typeof unsafeWindow !== "undefined"
+      ? unsafeWindow.hh3dData
+      : window.hh3dData;
+
+    if (!data) {
+      showToast("❌ Không thấy hh3dData");
       return;
     }
+
+    const action = data.act?.hdnReward;
+    const token = data.securityToken;
+
+    if (!action) {
+      console.log("DEBUG ACT:", data.act);
+      showToast("❌ Không có action hdnReward");
+      return;
+    }
+
     const resp = await fetch(ACTIVITY_API, {
       method: "POST",
       headers: {
@@ -6870,28 +8068,26 @@ async function claimActivityReward(stage) {
       },
       credentials: "include",
       body: new URLSearchParams({
-        action: "daily_activity_reward",
+        action: action,
         stage: stage,
-        security_token: securityToken
+        security_token: token
       })
     });
 
-    const data = await resp.json();
-    if (data?.data?.message) {
-      showToast(` ${data.data.message}`);
-    } else if (data?.message) {
-      showToast(` ${data.message}`);
-    } else {
-      showToast(`⚠️ Không có phản hồi (stage: ${stage})`);
-    }
+    const result = await resp.json();
+    console.log("🎁 CLAIM:", result);
+
+    showToast(result?.data?.message || result?.message || "Done");
+
   } catch (e) {
-    showToast(`❌ Lỗi nhận rương ${stage}: ${e.message}`);
+    showToast("❌ Lỗi: " + e.message);
   }
 }
+// ================== CLAIM ALL ==================
 async function claimAllActivityRewards() {
-    await claimActivityReward("stage1");
-    await new Promise(r => setTimeout(r, 5000));
-    await claimActivityReward("stage2");
+  await claimActivityReward("stage1");
+  await new Promise(r => setTimeout(r, 4000));
+  await claimActivityReward("stage2");
 }
 async function giftFlowerOnce(friendId) {
     let resp = await fetch(GIFT_API, {
@@ -7279,7 +8475,7 @@ function createAutoMenu() {
   const ran = isAutoRanToday();
 
 box.innerHTML =
-    '<label style="font-size:12px;color:#aaa">⏳ Delay chạy auto (phút)</label>' +
+    '<label style="font-size:12px;color:#aaa">⏳ Delay chạy auto sau (phút)</label>' +
 '<input id="autoDelay" type="number" min="0" placeholder="VD: 1" ' +
 'style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;border:none;background:#2a2a2a;color:#fff" />' +
   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
@@ -8921,6 +10117,7 @@ row.dataset.tuviInjected=true;
 getMyTuvi();
 loadData();
 setInterval(inject,1000);
+
 })();
 })();
 })();
