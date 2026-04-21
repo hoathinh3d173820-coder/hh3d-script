@@ -1941,10 +1941,10 @@ btnReward.addEventListener("click", async () => {
     // 🎁 Nhận toàn bộ hoạt động
     await claimAllActivityRewards();
     // ⏱️ chờ nhẹ
-    await new Promise(r => setTimeout(r, 500));
 
+    await new Promise(r => setTimeout(r, 500));
     await spinLottery();
-    showToast("✅ Đã nhận hoạt động + Luận Võ+ Vòng Quay");
+    showToast("✅ Đã nhận hoạt động + Vòng Quay");
   } catch (e) {
     console.error("[ACTIVITY+LUANVO]", e);
     showToast("❌ Lỗi khi nhận thưởng");
@@ -2733,7 +2733,6 @@ function startActivityAutoLoop() {
   }
   return progress;
 }
-/* --- fetch + update UI --- */
 async function fetchActivityProgress() {
   try {
     const res = await fetch(buildUrl("/nhiem-vu-hang-ngay"), {
@@ -2802,7 +2801,6 @@ async function fetchActivityProgress() {
     try {
       const diemDanh = progress["Điểm Danh"] || progress["Điểm danh"] || 0;
       const vanDap = progress["Vấn Đáp"] || 0;
-      const luanVo = progress["Luận Võ"] || 0;
 
       /* ===== Điểm danh + Vấn đáp ===== */
       if (diemDanh < 100 || vanDap < 100) {
@@ -2820,15 +2818,6 @@ async function fetchActivityProgress() {
         if (typeof autoQuiz === "function") {
           await autoQuiz();
           await new Promise(r => setTimeout(r, 1500));
-        }
-      }
-
-      /* ===== Luận Võ ===== */
-      if (luanVo < 100) {
-        console.log("⚔️ Auto BHD: Chạy Luận Võ");
-
-        if (typeof runLuanVoAuto === "function") {
-          await runLuanVoAuto();
         }
       }
 
@@ -2850,9 +2839,8 @@ async function autoClaimActivityAll() {
     showToast("🎁 Hoạt động đủ 100%, đang nhận...");
     await claimAllActivityRewards();
     await new Promise((r) => setTimeout(r, 500));
-    await receiveLuanVoReward();
     await spinLottery();
-    showToast("✅ Đã nhận Hoạt Động + Luận Võ + Vòng Quay");
+    showToast("✅ Đã nhận Hoạt Động + Vòng Quay");
     localStorage.setItem("ACTIVITY_DONE_DAY", today);
   } catch {
     showToast("❌ Lỗi nhận hoạt động");
@@ -3460,8 +3448,6 @@ function runLuanVoAuto() {
 
     if (document.getElementById("luanvo_panel")) return;
 
-    let IDS = localStorage.getItem("lv_ids") || "";
-
     const panel = document.createElement("div");
     panel.id = "luanvo_panel";
 
@@ -3480,12 +3466,7 @@ function runLuanVoAuto() {
     `;
 
     panel.innerHTML = `
-<h3 style="margin:0 0 10px;color:#00eaff">⚔️ MÊ CUNG </h3>
-
-<label style="font-size:12px;color:#aaa">ID giữ lại</label>
-<input id="lv_id"
-value="${IDS}"
-style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff" />
+<h3 style="margin:0 0 10px;color:#00eaff">⚔️ MÊ CUNG</h3>
 
 <label style="font-size:12px;color:#aaa">HP tối thiểu</label>
 <input id="lv_hp"
@@ -3494,17 +3475,17 @@ style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;background:#2
 
 <button id="lv_create"
 style="width:100%;margin-bottom:8px;background:#00eaff;color:#000;padding:7px;border-radius:6px">
-Lập đội
+Tạo key
 </button>
 
-<label style="font-size:12px;color:#aaa">Phòng</label>
+<label style="font-size:12px;color:#aaa">Tên / Key phòng hoặc dán link vào</label>
 <input id="lv_name"
 value="${localStorage.getItem("lv_input") || ""}"
 style="width:100%;margin-bottom:10px;padding:6px;border-radius:6px;background:#2a2a2a;color:#fff" />
 
 <button id="lv_join"
 style="width:100%;background:#666;color:#fff;padding:7px;border-radius:6px">
-Vào phòng
+Vào phòng đi ké
 </button>
 
 <button id="lv_api"
@@ -3517,33 +3498,34 @@ style="width:100%;margin-top:10px;background:#ff4444;color:#fff;padding:6px;bord
 Đóng
 </button>
 `;
-
     document.body.appendChild(panel);
-
-    // ===== EVENTS (FIX CHÍNH) =====
+    // ===== EVENTS =====
     setTimeout(() => {
-
-        document.getElementById("lv_id").oninput = e =>
-            localStorage.setItem("lv_ids", e.target.value);
-
+        // lưu HP
         document.getElementById("lv_hp").oninput = e =>
             localStorage.setItem("lv_hp", e.target.value);
-
+        // lưu key / tên phòng
         document.getElementById("lv_name").oninput = e =>
             localStorage.setItem("lv_input", e.target.value);
 
-        document.getElementById("lv_create").onclick = () =>
-            openLuanVoIframe("create");
+        // 👉 TẠO KEY sau này gắn API
+        document.getElementById("lv_create").onclick = () => {
 
-        document.getElementById("lv_join").onclick = () =>
+            // TODO: call API create key
+            openLuanVoIframe("create"); // tạm dùng lại
+        };
+        // 👉 VÀO PHÒNG ĐI KÉ
+        document.getElementById("lv_join").onclick = () => {
             openLuanVoIframe("join");
+        };
+        // 👉 API MODE
+        document.getElementById("lv_api").onclick = () => {
+            console.log("⚡ Chạy bằng API");
+            openApiPopup();
+        };
 
         document.getElementById("lv_close").onclick = () =>
             panel.remove();
-
-        // ✅ API BUTTON
-        document.getElementById("lv_api").onclick = () =>
-            openApiPopup();
 
     }, 0);
 }
@@ -3559,46 +3541,159 @@ style="width:100%;margin-top:10px;background:#ff4444;color:#fff;padding:6px;bord
         return el && el.offsetParent !== null && !el.disabled;
     }
 
+ function openLuanVoIframe(mode) {
+
+    // Xóa iframe cũ nếu có
+    document.getElementById("mc_container")?.remove();
+
+    // ===== CONTAINER =====
+    const container = document.createElement("div");
+    container.id = "mc_container";
+
+    container.style = `
+        position:fixed;
+        top:50%;
+        left:50%;
+        transform:translate(-50%,-50%);
+        z-index:99998;
+        width:420px;
+        background:#111;
+        border:2px solid #00eaff;
+        border-radius:12px;
+        overflow:hidden;
+        box-shadow:0 0 20px rgba(0,0,0,0.8);
+    `;
+
+    // ===== HEADER + LOG =====
+    container.innerHTML = `
+        <div style="
+            background:#000;
+            padding:6px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            font-size:12px;
+            border-bottom:1px solid #333;
+        ">
+            <span style="color:#00eaff">⚔️ Mê Cung</span>
+            <button id="mc_close" style="
+                background:#ff4444;
+                border:none;
+                color:#fff;
+                padding:2px 8px;
+                border-radius:6px;
+                cursor:pointer;
+            ">X</button>
+        </div>
+
+        <div id="mc_log" style="
+            height:80px;
+            overflow:auto;
+            background:#0a0a0a;
+            font-size:11px;
+            padding:5px;
+            color:#0f0;
+            border-bottom:1px solid #222;
+        "></div>
+    `;
+
     // ===== IFRAME =====
-function openLuanVoIframe(mode) {
-        let old = document.getElementById("mc_iframe");
-        if (old) old.remove();
+    const iframe = document.createElement("iframe");
+    iframe.id = "mc_iframe";
+    iframe.src = "https://hoathinh3d.co/me-cung";
 
-        const iframe = document.createElement("iframe");
-        iframe.id = "mc_iframe";
-        iframe.src = "https://hoathinh3d.co/me-cung";
+    iframe.style = `
+        width:100%;
+        height:470px;
+        border:none;
+    `;
 
-        iframe.style = `
-            position:fixed;width:420px;height:550px;
-            top:50%;left:50%;transform:translate(-50%,-50%);
-            z-index:99998;border:2px solid #00eaff;border-radius:12px;
-        `;
+    container.appendChild(iframe);
+    document.body.appendChild(container);
 
-        document.body.appendChild(iframe);
+    // ===== LOG FUNCTION =====
+    const logBox = container.querySelector("#mc_log");
 
-       iframe.onload = () => {
-    const doc = iframe.contentDocument;
-
-    console.log("Iframe loaded");
-
-    // delay lâu hơn vì web này load chậm
-    setTimeout(() => {
-
-        console.log("Bắt đầu xử lý mode:", mode);
-
-        if (isInRoom(doc)) {
-            console.log("Đã ở trong phòng sẵn");
-            afterJoin(doc);
-            return;
-        }
-
-        if (mode === "create") autoCreate(doc);
-        if (mode === "join") autoJoin(doc);
-
-    }, 2000); // ⬅ tăng từ 1000 → 2000
-};
+    function log(msg) {
+        const time = new Date().toLocaleTimeString();
+        logBox.innerHTML += `[${time}] ${msg}<br>`;
+        logBox.scrollTop = logBox.scrollHeight;
     }
 
+    // ===== CLOSE =====
+    container.querySelector("#mc_close").onclick = () => {
+        container.remove();
+    };
+
+    // ===== LOAD =====
+    iframe.onload = () => {
+
+        const doc = iframe.contentDocument;
+
+        log("✅ Iframe loaded");
+
+        let started = false;
+
+        const waitReady = setInterval(() => {
+
+            if (!doc || !doc.body) return;
+
+            if (started) return;
+
+            started = true;
+            clearInterval(waitReady);
+
+            log("🚀 Bắt đầu mode: " + mode);
+
+            if (isInRoom(doc)) {
+                log("✔ Đã ở trong phòng");
+                afterJoin(doc);
+                return;
+            }
+
+            if (mode === "create") {
+                log("🔑 Auto create");
+                autoCreate(doc);
+            }
+
+            if (mode === "join") {
+                log("🚪 Auto join");
+                autoJoin(doc);
+            }
+
+        }, 500); // ⬅ nhẹ hơn setTimeout
+
+    };
+}
+    function parseRoomInput(raw) {
+    if (!raw) return null;
+
+    raw = raw.trim();
+
+    // 🔥 tìm invite trong link
+    const inviteMatch = raw.match(/invite=([a-z0-9]+)/i);
+    if (inviteMatch) {
+        return {
+            type: "invite",
+            value: inviteMatch[1]
+        };
+    }
+
+    // 🔥 tìm ID phòng
+    const idMatch = raw.match(/phòng\s*(\d+)/i) || raw.match(/\b(\d{4,})\b/);
+    if (idMatch) {
+        return {
+            type: "id",
+            value: idMatch[1]
+        };
+    }
+
+    // 🔥 fallback: tên phòng
+    return {
+        type: "name",
+        value: raw.toLowerCase()
+    };
+}
     // ===== CREATE =====
 function autoCreate(doc) {
     const loop = setInterval(() => {
@@ -3622,22 +3717,46 @@ function autoCreate(doc) {
         }
     }, 1000);
 }
-    // ===== JOIN =====
 function autoJoin(doc) {
 
     const loop = setInterval(() => {
 
-        let INPUT = (localStorage.getItem("lv_input") || "").toLowerCase().trim();
+        let RAW = localStorage.getItem("lv_input") || "";
 
-        if (!INPUT) {
+        if (!RAW) {
             console.log("⚠️ Chưa nhập input");
             return;
         }
 
-        console.log("Đang scan phòng với input:", INPUT);
+        const parsed = parseRoomInput(RAW);
 
+        console.log("Parsed:", parsed);
+
+        // ===== ✅ ƯU TIÊN INVITE (VÀO THẲNG) =====
+        if (parsed.type === "invite") {
+
+            console.log("🚀 Vào bằng invite:", parsed.value);
+
+            // 👉 redirect iframe luôn
+            doc.defaultView.location.href =
+                "https://hoathinh3d.co/me-cung?invite=" + parsed.value;
+
+            clearInterval(loop);
+
+            const waitJoin = setInterval(() => {
+                if (isInRoom(doc)) {
+                    console.log("✔ Đã vào phòng bằng invite");
+                    clearInterval(waitJoin);
+                    afterJoin(doc);
+                }
+            }, 1000);
+
+            return;
+        }
+
+        // ===== CHECK ĐÃ TRONG PHÒNG =====
         if (isInRoom(doc)) {
-            console.log("Đã vào phòng rồi");
+            console.log("✔ Đã ở trong phòng");
             clearInterval(loop);
             afterJoin(doc);
             return;
@@ -3646,11 +3765,9 @@ function autoJoin(doc) {
         const rooms = doc.querySelectorAll(".room-item");
 
         if (!rooms || rooms.length === 0) {
-            console.log("Chưa load danh sách phòng...");
+            console.log("⏳ Chưa load danh sách phòng...");
             return;
         }
-
-        const isNumber = /^\d+$/.test(INPUT);
 
         for (let room of rooms) {
 
@@ -3663,23 +3780,22 @@ function autoJoin(doc) {
             const name = nameEl?.innerText?.toLowerCase() || "";
             const meta = metaEl?.innerText || "";
 
-            // lấy ID
             const match = meta.match(/#(\d+)/);
             const roomId = match ? match[1] : "";
 
-            console.log("Check:", name, "| ID:", roomId);
-
             let isMatch = false;
 
-            if (isNumber) {
+            if (parsed.type === "id") {
+                isMatch = roomId === parsed.value;
+            }
 
-                isMatch = roomId === INPUT;
-            } else {
-                isMatch = name.includes(INPUT);
+            if (parsed.type === "name") {
+                isMatch = name.includes(parsed.value);
             }
 
             if (isMatch) {
-                console.log("✅ VÀO ĐÚNG PHÒNG:", name, "| ID:", roomId);
+
+                console.log("✅ Vào phòng:", name, "| ID:", roomId);
 
                 btn.click();
                 clearInterval(loop);
@@ -3696,9 +3812,9 @@ function autoJoin(doc) {
             }
         }
 
-        console.log("❌ Không tìm thấy phòng phù hợp");
+        console.log("❌ Không tìm thấy phòng");
 
-    }, 1500);
+    }, 1200);
 }
     // ===== AFTER JOIN =====
   function afterJoin(doc) {
@@ -8042,17 +8158,16 @@ const ACTIVITY_API = "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
 
 async function claimActivityReward(stage) {
   try {
+
     const data = typeof unsafeWindow !== "undefined"
       ? unsafeWindow.hh3dData
       : window.hh3dData;
-
     if (!data) {
       showToast("❌ Không thấy hh3dData");
       return;
     }
-
+    // action
     const action = data.act?.hdnReward;
-    const token = data.securityToken;
 
     if (!action) {
       console.log("DEBUG ACT:", data.act);
@@ -8060,6 +8175,15 @@ async function claimActivityReward(stage) {
       return;
     }
 
+    // ================= LẤY TOKEN TỪ HOME =================
+    const token = await getSecurityToken("/");
+
+    if (!token) {
+      showToast("❌ Không lấy được security token");
+      return;
+    }
+
+    // ================= CALL API =================
     const resp = await fetch(ACTIVITY_API, {
       method: "POST",
       headers: {
@@ -8074,6 +8198,7 @@ async function claimActivityReward(stage) {
     });
 
     const result = await resp.json();
+
     console.log("🎁 CLAIM:", result);
 
     showToast(result?.data?.message || result?.message || "Done");
@@ -8728,7 +8853,7 @@ function autoWeddingClick() {
   setTimeout(() => {
     console.log("❤️ Đi phòng cưới");
     document.querySelector("#btnWedding")?.click();
-  }, 1000);
+  }, 10000);
 }
     let weddingTimer = null;
 
@@ -9187,7 +9312,7 @@ const KM_SEC = {
   mine_security: null,
   refresh_nonce: null,
   token: null,
-  actMap: {},       // hh3dData.act mapping (e.g. kmEnter -> km_enter)
+  actMap: {},      
   lastScan: 0
 };
 
