@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D
 // @namespace    https://github.com/hoathinh3d173820-coder
-// @version      3.0
+// @version      3.1
 // @description  Cập nhật nhận hdhn
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -2539,26 +2539,31 @@ async function fetchLatestHapThuCode() {
 
     const nodes = div.querySelectorAll(".wpd-comment, .wpd-comment-text");
 
-    // 🔥 Hàm bắt code xịn
+    // 🔥 FIX: extractCode hỗ trợ dấu "-"
     function extractCode(text) {
       if (!text) return null;
 
       text = text.replace(/\u00a0/g, " ").trim();
 
       // ✅ 1. Ưu tiên keyword
-      let m = text.match(/(?:code|mã)[^a-z0-9]{0,30}([A-Z0-9]{4,})/i);
+      let m = text.match(/(?:code|mã)[^a-z0-9]{0,30}([A-Z0-9-]{4,})/i);
       if (m) return m[1].toUpperCase();
 
-      // ✅ 2. fallback: chuỗi IN HOA
-      const matches = text.match(/\b[A-Z0-9]{6,}\b/g);
+      // ✅ 2. fallback
+      const matches = text.match(/\b[A-Z0-9-]{6,}\b/g);
+
       if (matches && matches.length) {
         const filtered = matches
           .filter(x =>
             x.length >= 6 &&
-            x.length <= 20 &&
+            x.length <= 25 &&
             !/^(HTTP|HTTPS|HTML|ID|USER)/.test(x)
           )
-          .sort((a, b) => b.length - a.length);
+          .sort((a, b) => {
+            const aScore = (a.includes("-") ? 2 : 0) + a.length;
+            const bScore = (b.includes("-") ? 2 : 0) + b.length;
+            return bScore - aScore;
+          });
 
         if (filtered.length) return filtered[0];
       }
@@ -4089,6 +4094,7 @@ let lastChestMsgId = 0;
     let realToken = null;
     let realNonce = null;
     let currentRoom = null;
+    let lastGlobalMsgId = 0;
     let lastStatusHash = "";
     // ================= POPUP =================
     const popup = document.createElement("div");
@@ -4224,44 +4230,58 @@ async function checkChestFromChat() {
     const messages = await readChat();
     if (!messages?.length) return;
 
+    const msg = messages[0]; // ✅ chỉ lấy message mới nhất
+    if (!msg) return;
+
+    // ✅ chặn message cũ
+    if (msg.message_id <= lastChestMsgId) return;
+    lastChestMsgId = msg.message_id;
+
     const myId = getMyUserIdFromDOM();
     if (!myId) return;
 
-    for (let msg of messages) {
+    const text = msg.message || "";
 
-        if (msg.message_id <= lastChestMsgId) continue;
-        lastChestMsgId = msg.message_id;
+    if (!text.startsWith("CHEST|")) return;
 
-        const text = msg.message || "";
+    const parts = text.split("|");
 
-        if (!text.startsWith("CHEST|")) continue;
+    const room = parts[1];
+    const raw = parts[2];
 
-        const parts = text.split("|");
+    if (!room || !raw) return;
 
-        const room = parts[1];
-        const raw = parts[2];
+    // ❗ nếu có currentRoom thì check đúng room
+    if (currentRoom && room !== currentRoom) return;
 
-        if (!room || !raw) continue;
+    const list = raw.split(",");
 
-        const list = raw.split(",");
+    for (let item of list) {
 
-        for (let item of list) {
+        const [uid, token] = item.split(":");
 
-            const [uid, token] = item.split(":");
+        if (!uid || !token) continue;
 
-            if (!uid || !token) continue;
+        // ✅ chặn token đã dùng
+        if (usedChestTokens.has(token)) continue;
 
-            if (usedChestTokens.has(token)) continue;
+        if (parseInt(uid) === parseInt(myId)) {
 
-            if (parseInt(uid) === parseInt(myId)) {
+            usedChestTokens.add(token);
 
+            showToast("🎁 Đang mở rương...", true);
+
+            // 👉 delay nhẹ giống slave cho chắc ăn
+            await sleepAccurate(6000);
+
+            const ok = await claimChest(room, token);
+
+            // ❗ nếu fail → vẫn block luôn để không spam
+            if (!ok) {
                 usedChestTokens.add(token);
-
-                showToast("🎁 Đang mở rương...", true);
-
-                await claimChest(room, token);
-                return;
             }
+
+            return;
         }
     }
 }
@@ -4336,7 +4356,10 @@ async function readChat() {
             return [];
         }
 
-        return data.messages;
+        if (!data.messages || !data.messages.length) return [];
+
+const latest = data.messages[0]; // ✅ mới nhất nằm ở index 0
+return [latest];
 
     } catch (e) {
         log("❌ read chat lỗi");
